@@ -7,6 +7,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 	json_response(405, ['error' => 'Method Not Allowed']);
 }
 
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+// Start secure PHP session before any output
+start_secure_session();
+
 $input = get_json_input();
 $identifier = sanitize_string($input['identifier'] ?? ''); // email or username
 $password = (string)($input['password'] ?? '');
@@ -24,7 +28,17 @@ try {
 		json_response(401, ['error' => 'Invalid credentials']);
 	}
 
-    // Return user info without creating a PHP session to avoid header issues
+    // Store minimal user info in session
+    $_SESSION['user_id'] = (int)$user['id'];
+    $_SESSION['username'] = $user['username'];
+    $_SESSION['email'] = $user['email'];
+    $_SESSION['full_name'] = $user['full_name'];
+
+    // Optionally rotate the session ID to prevent fixation
+    if (function_exists('session_regenerate_id')) {
+        session_regenerate_id(true);
+    }
+
     $responseUser = [
         'id' => (int)$user['id'],
         'fullName' => $user['full_name'],
