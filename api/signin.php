@@ -34,9 +34,5 @@ try {
 
     json_response(200, ['message' => 'Signed in successfully', 'user' => $responseUser]);
 } catch (Throwable $e) {
-	json_response(500, [
-		'error' => 'Server error',
-		'exception' => get_class($e),
-		'message' => $e->getMessage(),
-	]);
+	json_response(500, ['error' => 'Server error']);
 }

@@ -18,7 +18,7 @@ function get_json_input(): array {
 }
 
 function sanitize_string(?string $value): string {
-	return trim(filter_var($value ?? '', FILTER_UNSAFE_RAW));
+	return htmlspecialchars(trim($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
 function validate_email(string $email): bool {

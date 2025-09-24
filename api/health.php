@@ -22,13 +22,7 @@ try {
 		'usersTableCount' => $userCount,
 	]);
 } catch (Throwable $e) {
-    $debug = isset($_GET['debug']) && $_GET['debug'] === '1';
-    $payload = ['error' => 'DB connection failed'];
-    if ($debug) {
-        $payload['exception'] = get_class($e);
-        $payload['message'] = $e->getMessage();
-    }
-    json_response(500, $payload);
+    json_response(500, ['error' => 'DB connection failed']);
 }
 
 ?>
