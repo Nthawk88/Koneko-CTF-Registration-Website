@@ -234,6 +234,264 @@ function setupFloatingIcons() {
     });
 }
 
+// ============================
+// Missing Functions Implementation
+// ============================
+
+function setupTabs() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Remove active class from all buttons and panes
+            tabBtns.forEach(b => b.classList.remove('active'));
+            tabPanes.forEach(p => p.classList.remove('active'));
+
+            // Add active class to clicked button and corresponding pane
+            btn.classList.add('active');
+            const tabId = btn.getAttribute('data-tab') + '-tab';
+            document.getElementById(tabId)?.classList.add('active');
+        });
+    });
+}
+
+function loadCompetitions() {
+    // Mock data for competitions
+    const mockCompetitions = [
+        {
+            id: 1,
+            title: "Web Security Challenge",
+            description: "Test your web application security skills",
+            status: "open",
+            participants: 245,
+            difficulty: "Medium",
+            startDate: "2025-09-25",
+            endDate: "2025-09-30"
+        },
+        {
+            id: 2,
+            title: "Cryptography Quest",
+            description: "Decrypt the secrets and find the hidden messages",
+            status: "upcoming",
+            participants: 189,
+            difficulty: "Hard",
+            startDate: "2025-10-01",
+            endDate: "2025-10-05"
+        },
+        {
+            id: 3,
+            title: "Binary Exploitation",
+            description: "Exploit vulnerabilities in binary programs",
+            status: "ended",
+            participants: 312,
+            difficulty: "Expert",
+            startDate: "2025-09-15",
+            endDate: "2025-09-20"
+        }
+    ];
+
+    competitions = mockCompetitions;
+    renderCompetitions();
+    setupCompetitionFilters();
+}
+
+function setupCompetitionFilters() {
+    // Search functionality
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            renderCompetitions();
+        });
+    }
+
+    // Filter buttons
+    const filterBtns = document.querySelectorAll('.filter-btn');
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Remove active class from all buttons
+            filterBtns.forEach(b => b.classList.remove('active'));
+            // Add active class to clicked button
+            btn.classList.add('active');
+            // Re-render competitions
+            renderCompetitions();
+        });
+    });
+}
+
+function renderCompetitions() {
+    const container = document.getElementById('competitions-list');
+    if (!container) return;
+
+    const searchTerm = document.getElementById('search-input')?.value?.toLowerCase() || '';
+    const activeFilter = document.querySelector('.filter-btn.active')?.getAttribute('data-filter') || 'all';
+
+    let filteredCompetitions = competitions.filter(comp => {
+        const matchesSearch = comp.title.toLowerCase().includes(searchTerm) ||
+                            comp.description.toLowerCase().includes(searchTerm);
+        const matchesFilter = activeFilter === 'all' || comp.status === activeFilter;
+        return matchesSearch && matchesFilter;
+    });
+
+    container.innerHTML = filteredCompetitions.map(comp => `
+        <div class="competition-card ${comp.status}">
+            <div class="competition-header">
+                <h3>${comp.title}</h3>
+                <span class="competition-status status-${comp.status}">${comp.status}</span>
+            </div>
+            <p class="competition-description">${comp.description}</p>
+            <div class="competition-meta">
+                <span class="meta-item">
+                    <i class="fas fa-users"></i>
+                    ${comp.participants} participants
+                </span>
+                <span class="meta-item">
+                    <i class="fas fa-chart-line"></i>
+                    ${comp.difficulty}
+                </span>
+                <span class="meta-item">
+                    <i class="fas fa-calendar"></i>
+                    ${comp.startDate} - ${comp.endDate}
+                </span>
+            </div>
+            <div class="competition-actions">
+                <button class="btn btn-primary btn-sm">
+                    <i class="fas fa-eye"></i>
+                    View Details
+                </button>
+                ${comp.status === 'open' ? '<button class="btn btn-outline btn-sm"><i class="fas fa-play"></i> Join</button>' : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
+function loadDashboardData() {
+    // Mock data for dashboard
+    const mockDashboardCompetitions = [
+        {
+            id: 1,
+            title: "Web Security Challenge",
+            status: "active",
+            progress: 65,
+            rank: 12,
+            points: 850
+        },
+        {
+            id: 2,
+            title: "Cryptography Quest",
+            status: "upcoming",
+            progress: 0,
+            rank: null,
+            points: 0
+        }
+    ];
+
+    const mockActivityFeed = [
+        {
+            type: "challenge_solved",
+            message: "Solved 'SQL Injection' challenge",
+            time: "2 hours ago",
+            points: 50
+        },
+        {
+            type: "competition_joined",
+            message: "Joined 'Web Security Challenge'",
+            time: "1 day ago",
+            points: 0
+        },
+        {
+            type: "rank_improved",
+            message: "Rank improved to #42",
+            time: "3 days ago",
+            points: 0
+        }
+    ];
+
+    dashboardCompetitions = mockDashboardCompetitions;
+    activityFeed = mockActivityFeed;
+    renderDashboard();
+}
+
+function renderDashboard() {
+    // Render dashboard competitions
+    const dashboardContainer = document.getElementById('dashboard-competitions');
+    if (dashboardContainer) {
+        dashboardContainer.innerHTML = dashboardCompetitions.map(comp => `
+            <div class="competition-card dashboard ${comp.status}">
+                <div class="competition-header">
+                    <h3>${comp.title}</h3>
+                    <span class="competition-status status-${comp.status}">${comp.status}</span>
+                </div>
+                ${comp.status === 'active' ? `
+                    <div class="progress-section">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${comp.progress}%"></div>
+                        </div>
+                        <span class="progress-text">${comp.progress}% Complete</span>
+                    </div>
+                    <div class="competition-stats">
+                        <div class="stat">
+                            <span class="stat-label">Current Rank</span>
+                            <span class="stat-value">#${comp.rank}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Points</span>
+                            <span class="stat-value">${comp.points}</span>
+                        </div>
+                    </div>
+                ` : ''}
+                <div class="competition-actions">
+                    <button class="btn btn-primary btn-sm">
+                        <i class="fas fa-eye"></i>
+                        View Details
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Render activity feed
+    const activityContainer = document.getElementById('activity-feed');
+    if (activityContainer) {
+        activityContainer.innerHTML = activityFeed.map(activity => `
+            <div class="activity-item ${activity.type}">
+                <div class="activity-icon">
+                    <i class="fas fa-${activity.type === 'challenge_solved' ? 'check-circle' :
+                                   activity.type === 'competition_joined' ? 'users' : 'trophy'}"></i>
+                </div>
+                <div class="activity-content">
+                    <p class="activity-message">${activity.message}</p>
+                    <span class="activity-time">${activity.time}</span>
+                </div>
+                ${activity.points > 0 ? `<div class="activity-points">+${activity.points}</div>` : ''}
+            </div>
+        `).join('');
+    }
+}
+
+function setupProfileEdit() {
+    const editBtn = document.getElementById('edit-profile-btn');
+    const cancelBtn = document.getElementById('cancel-edit-btn');
+    const actions = document.getElementById('profile-actions');
+    const inputs = document.querySelectorAll('#info-tab input, #info-tab textarea');
+
+    if (editBtn) {
+        editBtn.addEventListener('click', () => {
+            inputs.forEach(input => input.disabled = false);
+            actions.style.display = 'flex';
+            editBtn.style.display = 'none';
+        });
+    }
+
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            inputs.forEach(input => input.disabled = true);
+            actions.style.display = 'none';
+            editBtn.style.display = 'inline-block';
+        });
+    }
+}
+
 // ⚡ Semua fungsi lain (setupForms, loadCompetitions, renderDashboard, dsb) biarkan sama persis dengan file aslinya
 // cukup tambahkan bagian di atas agar website bisa jalan lancar.
 
