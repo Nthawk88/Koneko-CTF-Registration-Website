@@ -22,11 +22,16 @@ sql/
 
 ### 1) Siapkan Database
 
-1. Buat database dan tabel `users` menggunakan file `sql/init.sql` (otomatis oleh docker-compose) atau manual via psql.
+1. Buat database PostgreSQL di Neon (https://neon.tech) atau penyedia cloud lainnya.
+2. Jalankan query dari `sql/init.sql` di database Anda untuk membuat tabel `users`.
 
 ### 2) Konfigurasi Koneksi DB
 
-Edit `api/config.php` dan sesuaikan kredensial PostgreSQL Anda, atau set `DATABASE_URL` via environment.
+Buat file `.env` di root proyek dengan kredensial database cloud Anda (contoh untuk Neon):
+
+```
+DATABASE_URL=postgresql://username:password@host/database?sslmode=require
+```
 
 ### 3) Menjalankan Server PHP (Windows)
 
@@ -36,14 +41,7 @@ php -S localhost:8000 -t .
 
 ### 4) Docker (disarankan agar bebas masalah ekstensi)
 
-1. Buat file `.env` di root (opsional, contoh):
-```
-DATABASE_URL=postgresql://postgres:postgres@db/cybercat_ctf
-PGHOST=db
-PGUSER=postgres
-PGDATABASE=cybercat_ctf
-PGPASSWORD=postgres
-```
+1. Pastikan file `.env` sudah dibuat dengan kredensial database cloud.
 2. Jalankan docker-compose:
 ```bash
 docker compose up --build
