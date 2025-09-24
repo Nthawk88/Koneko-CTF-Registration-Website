@@ -10,16 +10,22 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
-    setupNavigation();
-    setupMascotAnimations();
-    setupBackgroundEffects();
-    setupForms();
-    setupTabs();
-    loadCompetitions();
-    loadDashboardData();
-    setupPasswordToggles();
-    setupProfileEdit();
+    // Restore session and set nav visibility ASAP to avoid flashing protected links
     restoreUserSession();
+    updateAuthUI();
+
+    setupNavigation();
+    // Optional features (guarded in case not defined elsewhere)
+    try { setupMascotAnimations && setupMascotAnimations(); } catch (e) {}
+    try { setupBackgroundEffects && setupBackgroundEffects(); } catch (e) {}
+    try { setupForms && setupForms(); } catch (e) {}
+    try { typeof setupTabs === 'function' && setupTabs(); } catch (e) {}
+    try { typeof loadCompetitions === 'function' && loadCompetitions(); } catch (e) {}
+    try { typeof loadDashboardData === 'function' && loadDashboardData(); } catch (e) {}
+    try { setupPasswordToggles && setupPasswordToggles(); } catch (e) {}
+    try { typeof setupProfileEdit === 'function' && setupProfileEdit(); } catch (e) {}
+    // Ensure profile dropdown gets wired if dashboard is present
+    try { setupProfileMenuDropdown && setupProfileMenuDropdown(); } catch (e) {}
     
     // Cek hash URL saat pertama kali load
     const initialPage = location.hash.replace('#', '') || 'home';
@@ -79,6 +85,10 @@ function setupNavigation() {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             const page = link.getAttribute('data-page');
+            if (page === 'logout') {
+                performSignOut();
+                return;
+            }
             location.hash = page; // update hash
             showPage(page);
             
@@ -97,6 +107,13 @@ function showPage(pageId) {
     const pages = document.querySelectorAll('.page');
     pages.forEach(page => page.classList.remove('active'));
     
+    // Auth guard for protected pages
+    if ((pageId === 'dashboard' || pageId === 'profile') && !isAuthenticated()) {
+        showNotification('Please sign in to access that page', 'error');
+        location.hash = 'signin';
+        pageId = 'signin';
+    }
+
     // Show target page
     const targetPage = document.getElementById(pageId);
     if (targetPage) {
@@ -111,31 +128,34 @@ function showPage(pageId) {
                 link.classList.add('active');
             }
         });
+        // Ensure auth-based visibility is always enforced
+        updateAuthUI();
         
         // Update page title
         updatePageTitle(pageId);
         
         // Trigger page-specific functions
-        if (pageId === 'competitions') {
-            renderCompetitions();
-        } else if (pageId === 'dashboard') {
-            renderDashboard();
-            updateUserUI();
-        }
+        // if (pageId === 'competitions') {
+        //     renderCompetitions();
+        // } else if (pageId === 'dashboard') {
+        //     renderDashboard();
+        //     updateUserUI();
+        //     setupProfileMenuDropdown();
+        // }
     }
 }
 
 function updatePageTitle(pageId) {
     const titles = {
-        'home': 'CyberCat CTF - Capture The Flag Competition',
-        'competitions': 'CTF Competitions - CyberCat CTF',
-        'dashboard': 'Dashboard - CyberCat CTF',
-        'profile': 'Profile Management - CyberCat CTF',
-        'signin': 'Sign In - CyberCat CTF',
-        'signup': 'Sign Up - CyberCat CTF'
+        'home': 'Koneko CTF - Capture The Flag Competition',
+        'competitions': 'CTF Competitions - Koneko CTF',
+        'dashboard': 'Dashboard - Koneko CTF',
+        'profile': 'Profile Management - Koneko CTF',
+        'signin': 'Sign In - Koneko CTF',
+        'signup': 'Sign Up - Koneko CTF'
     };
     
-    document.title = titles[pageId] || 'CyberCat CTF';
+    document.title = titles[pageId] || 'Koneko CTF';
 }
 
 // Mascot Animations
@@ -329,6 +349,84 @@ function updateUserUI() {
     if (welcomeP) {
         welcomeP.textContent = `Welcome back, ${username}! Ready for some challenges?`;
     }
+    updateAuthUI();
+}
+
+function isAuthenticated() {
+    return !!window.currentUser;
+}
+
+function updateAuthUI() {
+    const isAuthed = isAuthenticated();
+    const linkDashboard = document.querySelector('.nav-link[data-page="dashboard"]');
+    const linkProfile = document.querySelector('.nav-link[data-page="profile"]');
+    const linkSignin = document.querySelector('.nav-link[data-page="signin"]');
+    const linkSignup = document.querySelector('.nav-link[data-page="signup"]');
+
+    if (linkDashboard) linkDashboard.style.display = isAuthed ? 'inline-block' : 'none';
+    if (linkProfile) linkProfile.style.display = isAuthed ? 'inline-block' : 'none';
+    const linkLogout = document.querySelector('.nav-link[data-page="logout"]');
+    if (linkLogout) linkLogout.style.display = isAuthed ? 'inline-block' : 'none';
+    if (linkSignin) linkSignin.style.display = isAuthed ? 'none' : '';
+    if (linkSignup) linkSignup.style.display = isAuthed ? 'none' : '';
+
+    // Hide entire user profile menu when logged out
+    const userProfileMenu = document.getElementById('user-profile-menu');
+    if (userProfileMenu) {
+        userProfileMenu.style.display = isAuthed ? '' : 'none';
+    }
+}
+
+function setupProfileMenuDropdown() {
+    const container = document.getElementById('user-profile-menu');
+    if (!container || container.__wired) return;
+    container.__wired = true;
+
+    const signoutBtn = container.querySelector('#menu-signout');
+
+    // Toggle only when clicking on profile-info or caret
+    const toggleTargets = [container.querySelector('.profile-info'), container.querySelector('.profile-caret'), container.querySelector('.profile-avatar')].filter(Boolean);
+    toggleTargets.forEach(el => {
+        el.addEventListener('click', () => {
+            container.classList.toggle('open');
+        });
+    });
+
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+        if (!container.contains(e.target)) {
+            container.classList.remove('open');
+        }
+    });
+
+    // Actions
+    container.querySelectorAll('.dropdown-item[data-action="edit-profile"]').forEach(el => {
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            location.hash = 'profile';
+            showPage('profile');
+            // Try switch to edit mode
+            const editBtn = document.getElementById('edit-profile-btn');
+            if (editBtn) {
+                editBtn.click();
+            }
+            container.classList.remove('open');
+        });
+    });
+
+    if (signoutBtn && !signoutBtn.__wired) {
+        signoutBtn.__wired = true;
+        signoutBtn.addEventListener('click', performSignOut);
+    }
+}
+
+function performSignOut() {
+    try { localStorage.removeItem('currentUser'); } catch (e) {}
+    window.currentUser = null;
+    updateAuthUI();
+    showNotification('Signed out', 'success');
+    location.hash = 'signin';
+    showPage('signin');
 }
 
 // ============================
