@@ -13,118 +13,59 @@ api/
   utils.php     -> Helper JSON response, input parser, session start
   signup.php    -> Endpoint API untuk registrasi
   signin.php    -> Endpoint API untuk login
-sql/database.sql    -> Skema tabel PostgreSQL (users)
+assets/
+  css/styles.css
+  js/script.js
+sql/
+  init.sql      -> Skema tabel PostgreSQL (users)
 ```
 
 ### 1) Siapkan Database
 
-1. Buat database dan tabel `users` menggunakan file `sql/database.sql`:
-
-   - Via psql CLI:
-     ```bash
-     createdb cybercat_ctf
-     psql -d cybercat_ctf -f sql/database.sql
-     ```
-
-   - Atau buka `sql/database.sql`, lalu eksekusi isinya pada DB Anda (pgAdmin).
-
-2. Jika ingin nama database khusus, buat DB-nya terlebih dahulu lalu jalankan file `sql/database.sql` pada DB tersebut.
+1. Buat database dan tabel `users` menggunakan file `sql/init.sql` (otomatis oleh docker-compose) atau manual via psql.
 
 ### 2) Konfigurasi Koneksi DB
 
-Edit `api/config.php` dan sesuaikan kredensial PostgreSQL Anda:
+Edit `api/config.php` dan sesuaikan kredensial PostgreSQL Anda, atau set `DATABASE_URL` via environment.
 
-```php
-define('DB_HOST', '127.0.0.1');
-define('DB_PORT', '5432');
-define('DB_NAME', 'cybercat_ctf');
-define('DB_USER', 'postgres');
-define('DB_PASS', 'your_password');
-```
-
-Catatan:
-- Session sudah diatur HTTPOnly. Jika Anda memakai HTTPS, aktifkan juga `session.cookie_secure` (uncomment barisnya di `config.php`).
-
-### 3) Aktifkan ekstensi pdo_pgsql
-
-Di php.ini pastikan ini aktif:
-```
-extension=pdo_pgsql
-```
-
-### 4) Menjalankan Server PHP (Windows)
-
-Jalankan perintah ini dari folder project:
+### 3) Menjalankan Server PHP (Windows)
 
 ```powershell
 php -S localhost:8000 -t .
 ```
 
-Lalu buka `http://localhost:8000/` di browser.
+### 4) Docker (disarankan agar bebas masalah ekstensi)
 
-Frontend (`script.js`) otomatis akan memanggil API berikut:
-- `POST /api/signup.php`  -> membuat akun baru
-- `POST /api/signin.php`  -> login dengan email/username + password
+1. Buat file `.env` di root (opsional, contoh):
+```
+DATABASE_URL=postgresql://postgres:postgres@db/cybercat_ctf
+PGHOST=db
+PGUSER=postgres
+PGDATABASE=cybercat_ctf
+PGPASSWORD=postgres
+```
+2. Jalankan docker-compose:
+```bash
+docker compose up --build
+```
+3. Akses aplikasi:
+- App: http://localhost:8000
+- Health check: http://localhost:8000/api/health.php
 
 ### 5) Format Request/Response
 
-Semua request harus `Content-Type: application/json`. Contoh:
-
-- Sign Up
-  ```bash
-  curl -X POST http://localhost:8000/api/signup.php \
-    -H "Content-Type: application/json" \
-    -d '{
-      "fullName": "John Doe",
-      "email": "john@example.com",
-      "username": "johnd",
-      "password": "Str0ngPass!",
-      "confirmPassword": "Str0ngPass!"
-    }'
-  ```
-
-- Sign In (email atau username pada `identifier`)
-  ```bash
-  curl -X POST http://localhost:8000/api/signin.php \
-    -H "Content-Type: application/json" \
-    -d '{
-      "identifier": "john@example.com",
-      "password": "Str0ngPass!"
-    }'
-  ```
-
-Respons sukses akan berbentuk JSON, misalnya untuk login:
-
-```json
-{
-  "message": "Signed in successfully",
-  "user": {
-    "id": 1,
-    "fullName": "John Doe",
-    "email": "john@example.com",
-    "username": "johnd"
-  }
-}
-```
+Semua request harus `Content-Type: application/json`.
 
 ### 6) Validasi & Keamanan
 
-- Password disimpan menggunakan `password_hash()` (default algorithm) dan dicek dengan `password_verify()`.
-- Query menggunakan prepared statements (PDO) untuk mencegah SQL Injection.
-- Cookie HTTPOnly aktif.
+- Password disimpan menggunakan `password_hash()` dan dicek dengan `password_verify()`.
+- Query menggunakan prepared statements (PDO).
 
 ### 7) Integrasi Frontend
 
-Form di halaman `Sign Up` dan `Sign In` sudah terhubung:
-- `script.js` menambahkan handler `setupForms()` untuk submit ke API.
-- Notifikasi sukses/error memakai `showNotification()`.
-- Setelah Sign Up sukses, pengguna diarahkan ke halaman Sign In.
-- Setelah Sign In sukses, pengguna diarahkan ke `Dashboard`.
-
-Jika Anda mengubah nama file atau path API, sesuaikan di `script.js` pada fungsi `apiRequest()` dan pemanggilnya.
+Form `Sign Up` dan `Sign In` sudah terhubung `script.js`.
 
 ### 8) Deployment
 
 - Untuk produksi, gunakan web server seperti Apache/Nginx + PHP-FPM.
-- Pastikan `api/config.php` tidak dapat diakses publik selain melalui PHP (jangan menayangkan isi file mentah).
 - Gunakan HTTPS dan aktifkan `session.cookie_secure`.
