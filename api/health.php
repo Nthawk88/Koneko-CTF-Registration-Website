@@ -13,11 +13,10 @@ try {
 		$countRow = $pdo->query('SELECT COUNT(*) AS c FROM users')->fetch();
 		$userCount = (int)($countRow['c'] ?? 0);
 	} catch (Throwable $e) {
-		// table might not exist
 	}
 
 	json_response(200, [
-		'configuredDbName' => 'neondb', // Using cloud database
+		'configuredDbName' => 'neondb',
 		'connectedDatabase' => $dbName,
 		'usersTableCount' => $userCount,
 	]);

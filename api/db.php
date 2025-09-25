@@ -7,7 +7,6 @@ function get_pdo(): PDO {
 		return $pdo;
 	}
 
-	// Parse DATABASE_URL
 	$parsed = parse_url(DATABASE_URL);
 	if ($parsed !== false) {
 		$scheme = $parsed['scheme'] ?? 'postgresql';
@@ -28,11 +27,9 @@ function get_pdo(): PDO {
 			$pdo = new PDO($dsn, $user, $pass, $options);
 			return $pdo;
 		} catch (Exception $e) {
-			// If DATABASE_URL fails, this will throw the exception
 			throw $e;
 		}
 	}
 
-	// This should not happen since DATABASE_URL should always be valid
 	throw new Exception('Invalid DATABASE_URL configuration');
 }

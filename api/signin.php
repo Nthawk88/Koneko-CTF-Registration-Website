@@ -2,24 +2,21 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/utils.php';
 
-// Allow only POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 	json_response(405, ['error' => 'Method Not Allowed']);
 }
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-// Start secure PHP session before any output
 start_secure_session();
 
 $input = get_json_input();
-$identifier = sanitize_string($input['identifier'] ?? ''); // email or username
+$identifier = sanitize_string($input['identifier'] ?? '');
 $password = (string)($input['password'] ?? '');
 
 if ($identifier === '' || $password === '') {
 	json_response(400, ['error' => 'Email/username and password are required']);
 }
 
-// Basic rate limiting: limit password length to prevent DOS
 if (strlen($password) > 128) {
 	json_response(400, ['error' => 'Password too long']);
 }
@@ -33,13 +30,11 @@ try {
 		json_response(401, ['error' => 'Invalid credentials']);
 	}
 
-    // Store minimal user info in session
     $_SESSION['user_id'] = (int)$user['id'];
     $_SESSION['username'] = $user['username'];
     $_SESSION['email'] = $user['email'];
     $_SESSION['full_name'] = $user['full_name'];
 
-    // Optionally rotate the session ID to prevent fixation
     if (function_exists('session_regenerate_id')) {
         session_regenerate_id(true);
     }
