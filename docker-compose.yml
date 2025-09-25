@@ -8,4 +8,4 @@ services:
     environment:
       - DATABASE_URL=postgresql://neondb_owner:npg_qkfmW5NpYP7X@ep-tiny-voice-a1a49fzy-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
     volumes:
-      - ./:/var/www/html
+      - ./src:/var/www/html
