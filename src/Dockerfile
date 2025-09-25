@@ -5,11 +5,11 @@ FROM php:8.2-apache
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install PostgreSQL extensions and dependencies (with retries)
-RUN set -eux; \
-	apt-get update -o Acquire::Retries=3; \
-	apt-get install -y --no-install-recommends ca-certificates wget git libpq-dev; \
-	docker-php-ext-install -j"$(nproc)" pdo_pgsql pgsql; \
-	rm -rf /var/lib/apt/lists/*
+RUN sed -i 's|http://deb.debian.org/debian|http://ftp.debian.org/debian|g' /etc/apt/sources.list \
+    && apt-get update -o Acquire::Retries=3 \
+    && apt-get install -y --no-install-recommends ca-certificates wget git libpq-dev \
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql pgsql
+    # && rm -rf /var/lib/apt/lists/*
 
 # Enable Apache modules commonly needed
 RUN a2enmod rewrite headers expires
