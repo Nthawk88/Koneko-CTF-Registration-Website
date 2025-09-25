@@ -14,5 +14,5 @@ services:
 
 networks:
   default:
-    external:
-      name: ctfd_net
+    external: true
+    name: ctfd_net
