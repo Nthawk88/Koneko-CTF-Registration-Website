@@ -19,6 +19,11 @@ if ($identifier === '' || $password === '') {
 	json_response(400, ['error' => 'Email/username and password are required']);
 }
 
+// Basic rate limiting: limit password length to prevent DOS
+if (strlen($password) > 128) {
+	json_response(400, ['error' => 'Password too long']);
+}
+
 try {
 	$pdo = get_pdo();
     $stmt = $pdo->prepare('SELECT id, full_name, email, username, password_hash FROM users WHERE email = :email OR username = :username LIMIT 1');

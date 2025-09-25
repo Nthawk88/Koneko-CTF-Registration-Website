@@ -17,7 +17,7 @@ try {
 	}
 
 	json_response(200, [
-		'configuredDbName' => DB_NAME,
+		'configuredDbName' => 'neondb', // Using cloud database
 		'connectedDatabase' => $dbName,
 		'usersTableCount' => $userCount,
 	]);
