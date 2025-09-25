@@ -1,9 +1,10 @@
 services:
-  app:
-    build: .
-    container_name: ctf_php_app
+  regist_ctf:
+    build: ./src
+    image: regist_ctf
+    container_name: regist_ctf
     ports:
-      - "8000:80"
+      - "9000:80"
     environment:
       - DATABASE_URL=${DATABASE_URL}
     volumes:
