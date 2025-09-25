@@ -1,5 +1,5 @@
 # PHP Apache with PDO_PGSQL
-FROM php:8.2-apache
+FROM php:8.2-apache-bullseye
 
 # Avoid interactive prompts during apt operations
 ARG DEBIAN_FRONTEND=noninteractive
