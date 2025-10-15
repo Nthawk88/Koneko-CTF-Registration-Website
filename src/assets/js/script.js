@@ -160,7 +160,7 @@ function updatePageTitle(pageId) {
 
 // Mascot Animations
 function setupMascotAnimations() {
-    const speechBubbles = document.querySelectorAll('.speech-bubble span');
+    const speechBubbles = document.querySelectorAll('.speech-text');
     const messages = [
         "Ready to hack the matrix?",
         "Let's pwn some challenges!",
@@ -172,26 +172,52 @@ function setupMascotAnimations() {
         "Let's catch some flags!"
     ];
     
-    speechBubbles.forEach(bubble => {
-        setInterval(() => {
-            const randomMessage = messages[Math.floor(Math.random() * messages.length)];
-            typeMessage(bubble, randomMessage);
-        }, 8000);
+    speechBubbles.forEach((bubble, bubbleIndex) => {
+        let currentMessageIndex = bubbleIndex % messages.length;
+        
+        // Function to cycle through messages in order
+        function showNextMessage() {
+            if (bubble.isTyping) return; // Prevent overlapping animations
+            
+            const message = messages[currentMessageIndex];
+            currentMessageIndex = (currentMessageIndex + 1) % messages.length;
+            
+            typeMessage(bubble, message);
+        }
+        
+        // Start the first message after a delay
+        setTimeout(() => {
+            showNextMessage();
+        }, bubbleIndex * 1000); // Stagger initial messages
+        
+        // Set up interval for subsequent messages
+        setInterval(showNextMessage, 10000); // Increased interval for better readability
     });
 }
 
 function typeMessage(element, message) {
+    // Clear any existing typing animation
+    if (element.typingInterval) {
+        clearInterval(element.typingInterval);
+    }
+    
+    // Set typing flag
+    element.isTyping = true;
+    
     element.textContent = '';
     let i = 0;
     
-    const typeInterval = setInterval(() => {
-        element.textContent += message[i];
-        i++;
-        
-        if (i >= message.length) {
-            clearInterval(typeInterval);
+    element.typingInterval = setInterval(() => {
+        if (i < message.length) {
+            element.textContent += message[i];
+            i++;
+        } else {
+            // Typing complete
+            clearInterval(element.typingInterval);
+            element.typingInterval = null;
+            element.isTyping = false;
         }
-    }, 100);
+    }, 80); // Slightly faster typing for better UX
 }
 
 // Background Effects
@@ -227,6 +253,7 @@ function setupMatrixRain() {
         ctx.font = fontSize + 'px monospace'
         
         for (let i = 0; i < drops.length; i++) {
+            // Restore original Matrix rain effect with random characters
             const text = matrixArray[Math.floor(Math.random() * matrixArray.length)];
             ctx.fillText(text, i * fontSize, drops[i] * fontSize);
             
@@ -250,6 +277,7 @@ function setupFloatingIcons() {
     
     floatingIcons.forEach((icon, index) => {
         icon.style.animationDelay = `${index * -2}s`;
+        // Restore random positioning for more natural floating effect
         icon.style.left = `${Math.random() * 100}%`;
     });
 }
