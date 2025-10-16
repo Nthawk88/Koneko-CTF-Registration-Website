@@ -27,6 +27,9 @@ function initializeApp() {
     // Ensure profile dropdown gets wired if dashboard is present
     try { setupProfileMenuDropdown && setupProfileMenuDropdown(); } catch (e) {}
     
+    // Load current user data from server
+    loadCurrentUser();
+    
     // Cek hash URL saat pertama kali load
     const initialPage = location.hash.replace('#', '') || 'home';
     showPage(initialPage);
@@ -520,8 +523,15 @@ function renderDashboard() {
 function setupProfileEdit() {
     const editBtn = document.getElementById('edit-profile-btn');
     const cancelBtn = document.getElementById('cancel-edit-btn');
+    const saveBtn = document.querySelector('#profile-actions .btn-primary');
     const actions = document.getElementById('profile-actions');
     const inputs = document.querySelectorAll('#info-tab input, #info-tab textarea');
+    const avatarBtn = document.querySelector('.avatar-upload .btn-outline');
+    const avatarInput = document.createElement('input');
+    
+    avatarInput.type = 'file';
+    avatarInput.accept = 'image/*';
+    avatarInput.style.display = 'none';
 
     if (editBtn) {
         editBtn.addEventListener('click', () => {
@@ -536,7 +546,181 @@ function setupProfileEdit() {
             inputs.forEach(input => input.disabled = true);
             actions.style.display = 'none';
             editBtn.style.display = 'inline-block';
+            // Reload user data to reset form
+            loadCurrentUser();
         });
+    }
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            await saveProfile();
+        });
+    }
+
+    // Avatar upload functionality
+    if (avatarBtn) {
+        avatarBtn.addEventListener('click', () => {
+            avatarInput.click();
+        });
+    }
+
+    avatarInput.addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            await uploadAvatar(file);
+        }
+    });
+
+    // Bio character counter real-time update
+    const bioTextarea = document.querySelector('#info-tab textarea[name="bio"]');
+    if (bioTextarea) {
+        bioTextarea.addEventListener('input', () => {
+            const charCounter = document.querySelector('.char-counter');
+            if (charCounter) {
+                const bioLength = bioTextarea.value.length;
+                charCounter.textContent = `${bioLength}/500`;
+            }
+        });
+    }
+
+    // Add avatar input to page
+    document.body.appendChild(avatarInput);
+}
+
+async function saveProfile() {
+    const fullNameInput = document.querySelector('#info-tab input[name="full_name"]');
+    const emailInput = document.querySelector('#info-tab input[name="email"]');
+    const locationInput = document.querySelector('#info-tab input[name="location"]');
+    const bioTextarea = document.querySelector('#info-tab textarea[name="bio"]');
+    
+    const profileData = {
+        full_name: fullNameInput?.value?.trim() || '',
+        email: emailInput?.value?.trim() || '',
+        location: locationInput?.value?.trim() || '',
+        bio: bioTextarea?.value?.trim() || ''
+    };
+    
+    console.log('Sending profile data:', profileData);
+    
+    try {
+        const response = await fetch('api/update_profile.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify(profileData)
+        });
+        
+        const responseText = await response.text();
+        console.log('Raw response:', responseText);
+        
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (e) {
+            console.error('Failed to parse JSON:', e);
+            throw new Error('Invalid response from server');
+        }
+        
+        if (response.ok) {
+            showNotification(data.message || 'Profile updated successfully', 'success');
+            
+            // Update local user data with proper field mapping
+            const userData = data.user;
+            if (userData) {
+                // Convert snake_case to camelCase for consistency
+                window.currentUser = { 
+                    ...window.currentUser, 
+                    ...userData,
+                    fullName: userData.full_name || userData.fullName,
+                    avatarUrl: userData.avatar_url || userData.avatarUrl,
+                    createdAt: userData.created_at || userData.createdAt,
+                    updatedAt: userData.updated_at || userData.updatedAt
+                };
+            }
+            localStorage.setItem('currentUser', JSON.stringify(window.currentUser));
+            
+            // Update UI
+            updateUserUI();
+            
+            // Hide edit form
+            const editBtn = document.getElementById('edit-profile-btn');
+            const actions = document.getElementById('profile-actions');
+            const inputs = document.querySelectorAll('#info-tab input, #info-tab textarea');
+            
+            inputs.forEach(input => input.disabled = true);
+            actions.style.display = 'none';
+            editBtn.style.display = 'inline-block';
+            
+        } else {
+            console.error('Profile update error:', data);
+            showNotification(data.error || 'Failed to update profile', 'error');
+        }
+    } catch (error) {
+        console.error('Error updating profile:', error);
+        showNotification('Failed to update profile', 'error');
+    }
+}
+
+async function uploadAvatar(file) {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    
+    try {
+        showNotification('Uploading avatar...', 'info');
+        
+        const response = await fetch('api/upload_avatar.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: formData
+        });
+        
+        const responseText = await response.text();
+        console.log('Avatar upload response:', responseText);
+        
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (e) {
+            console.error('Failed to parse avatar response:', e);
+            throw new Error('Invalid response from server');
+        }
+        
+        if (response.ok) {
+            showNotification(data.message || 'Avatar uploaded successfully', 'success');
+            
+            // Update local user data with new avatar URL and proper field mapping
+            const userData = data.user;
+            if (userData) {
+                // Convert snake_case to camelCase for consistency
+                window.currentUser = { 
+                    ...window.currentUser, 
+                    ...userData,
+                    fullName: userData.full_name || userData.fullName,
+                    avatarUrl: data.avatar_url || userData.avatar_url || userData.avatarUrl,
+                    createdAt: userData.created_at || userData.createdAt,
+                    updatedAt: userData.updated_at || userData.updatedAt
+                };
+            }
+            localStorage.setItem('currentUser', JSON.stringify(window.currentUser));
+            
+            // Update UI immediately
+            updateUserUI();
+            
+            // Force refresh avatar display
+            const avatarPreview = document.querySelector('.avatar-preview');
+            if (avatarPreview && data.avatar_url) {
+                const avatarUrl = data.avatar_url + '?t=' + Date.now();
+                avatarPreview.innerHTML = `<img src="${avatarUrl}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+            }
+            
+        } else {
+            showNotification(data.error || 'Failed to upload avatar', 'error');
+        }
+    } catch (error) {
+        console.error('Error uploading avatar:', error);
+        showNotification('Failed to upload avatar', 'error');
     }
 }
 
@@ -622,20 +806,203 @@ function restoreUserSession() {
         const raw = localStorage.getItem('currentUser');
         if (!raw) return;
         const user = JSON.parse(raw);
-        if (user && (user.username || user.fullName)) {
-            window.currentUser = user;
+        if (user && (user.username || user.fullName || user.full_name)) {
+            // Ensure consistent field mapping
+            window.currentUser = {
+                ...user,
+                fullName: user.full_name || user.fullName,
+                avatarUrl: user.avatar_url || user.avatarUrl,
+                createdAt: user.created_at || user.createdAt,
+                updatedAt: user.updated_at || user.updatedAt
+            };
         }
     } catch (e) {}
 }
 
+// Load current user from server
+async function loadCurrentUser() {
+    try {
+        const response = await fetch('api/get_current_user.php', {
+            credentials: 'same-origin'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            const userData = data.user;
+            if (userData) {
+                // Convert snake_case to camelCase for consistency
+                window.currentUser = {
+                    ...userData,
+                    fullName: userData.full_name || userData.fullName,
+                    avatarUrl: userData.avatar_url || userData.avatarUrl,
+                    createdAt: userData.created_at || userData.createdAt,
+                    updatedAt: userData.updated_at || userData.updatedAt
+                };
+                localStorage.setItem('currentUser', JSON.stringify(window.currentUser));
+                updateUserUI();
+            }
+        } else {
+            // User not authenticated
+            window.currentUser = null;
+            localStorage.removeItem('currentUser');
+            updateAuthUI();
+        }
+    } catch (error) {
+        console.error('Error loading current user:', error);
+    }
+}
+
 function updateUserUI() {
     if (!window.currentUser) return;
-    const username = window.currentUser.username || window.currentUser.fullName || 'Player';
+    const user = window.currentUser;
+    const displayName = user.fullName || user.username || 'Player';
+    
+    // Update dashboard welcome message
     const welcomeP = document.querySelector('#dashboard .welcome-text p');
     if (welcomeP) {
-        welcomeP.textContent = `Welcome back, ${username}! Ready for some challenges?`;
+        welcomeP.textContent = `Welcome back, ${displayName}! Ready for some challenges?`;
     }
+    
+    // Update profile name in dashboard
+    const profileName = document.querySelector('.profile-name');
+    if (profileName) {
+        profileName.textContent = user.fullName || user.username || 'User';
+    }
+    
+    // Update profile information in profile page
+    updateProfilePage();
+    
     updateAuthUI();
+}
+
+function updateProfilePage() {
+    if (!window.currentUser) return;
+    const user = window.currentUser;
+    
+    // Update avatar
+    const avatarPreview = document.querySelector('.avatar-preview');
+    if (avatarPreview && user.avatarUrl) {
+        // Add timestamp to prevent caching issues
+        const avatarUrl = user.avatarUrl + '?t=' + Date.now();
+        avatarPreview.innerHTML = `<img src="${avatarUrl}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+    } else if (avatarPreview) {
+        avatarPreview.innerHTML = '<i class="fas fa-user"></i>';
+    }
+    
+    // Also update any other avatar displays on the page
+    const allAvatarImages = document.querySelectorAll('img[alt="Avatar"], .avatar img, .profile-avatar img');
+    allAvatarImages.forEach(img => {
+        if (user.avatarUrl) {
+            const avatarUrl = user.avatarUrl + '?t=' + Date.now();
+            img.src = avatarUrl;
+        } else {
+            // Replace with default avatar icon
+            const parent = img.parentElement;
+            if (parent) {
+                parent.innerHTML = '<i class="fas fa-user"></i>';
+            }
+        }
+    });
+    
+    // Update profile basic info
+    const profileBasicInfo = document.querySelector('.profile-basic-info');
+    if (profileBasicInfo) {
+        const nameElement = profileBasicInfo.querySelector('h3');
+        const emailElement = profileBasicInfo.querySelector('p');
+        const locationElement = profileBasicInfo.querySelector('p:nth-of-type(2)');
+        const bioElement = profileBasicInfo.querySelector('.profile-bio');
+        const dateElement = profileBasicInfo.querySelector('p:nth-of-type(4)'); // Now at position 4
+        
+        if (nameElement) nameElement.textContent = user.fullName || user.username || 'User';
+        if (emailElement) emailElement.textContent = user.email || '';
+        
+        // Update location (now at position 2)
+        if (locationElement && user.location) {
+            locationElement.innerHTML = `<i class="fas fa-map-marker-alt"></i> ${user.location}`;
+            locationElement.style.display = 'block';
+        } else if (locationElement) {
+            locationElement.style.display = 'none';
+        }
+        
+        // Update bio display (now at position 3)
+        const bioText = profileBasicInfo.querySelector('.bio-text');
+        if (bioElement && bioText) {
+            if (user.bio && user.bio.trim()) {
+                bioText.textContent = user.bio;
+                bioElement.style.display = 'block';
+            } else {
+                bioElement.style.display = 'none';
+            }
+        }
+        
+        // Update joined date (now at position 4 - last)
+        if (dateElement && user.createdAt) {
+            try {
+                const joinDate = new Date(user.createdAt).toLocaleDateString();
+                dateElement.innerHTML = `<i class="fas fa-calendar"></i> Joined ${joinDate}`;
+            } catch (e) {
+                dateElement.innerHTML = `<i class="fas fa-calendar"></i> Joined ${user.createdAt}`;
+            }
+        } else if (dateElement) {
+            dateElement.innerHTML = `<i class="fas fa-calendar"></i> Joined Recently`;
+        }
+    }
+    
+    // Also update the profile display section (the one above the form)
+    const profileDisplaySection = document.querySelector('.profile-display');
+    if (profileDisplaySection) {
+        const displayName = profileDisplaySection.querySelector('.profile-display-name');
+        const displayEmail = profileDisplaySection.querySelector('.profile-display-email');
+        const displayLocation = profileDisplaySection.querySelector('.profile-display-location');
+        const displayBio = profileDisplaySection.querySelector('.profile-display-bio');
+        
+        if (displayName) displayName.textContent = user.fullName || user.username || 'User';
+        if (displayEmail) displayEmail.textContent = user.email || '';
+        if (displayLocation) {
+            if (user.location) {
+                displayLocation.textContent = user.location;
+                displayLocation.style.display = 'block';
+            } else {
+                displayLocation.style.display = 'none';
+            }
+        }
+        if (displayBio) {
+            if (user.bio) {
+                displayBio.textContent = user.bio;
+                displayBio.style.display = 'block';
+            } else {
+                displayBio.style.display = 'none';
+            }
+        }
+    }
+    
+    // Update form fields
+    const formInputs = document.querySelectorAll('#info-tab input, #info-tab textarea');
+    formInputs.forEach(input => {
+        const name = input.getAttribute('name') || input.previousElementSibling?.textContent?.toLowerCase();
+        if (name && user[name.replace(' ', '')]) {
+            input.value = user[name.replace(' ', '')];
+        }
+    });
+    
+    // Update specific form fields using name attributes
+    const fullNameInput = document.querySelector('#info-tab input[name="full_name"]');
+    const emailInput = document.querySelector('#info-tab input[name="email"]');
+    const locationInput = document.querySelector('#info-tab input[name="location"]');
+    const bioTextarea = document.querySelector('#info-tab textarea[name="bio"]');
+    
+    if (fullNameInput) fullNameInput.value = user.fullName || '';
+    if (emailInput) emailInput.value = user.email || '';
+    if (locationInput) locationInput.value = user.location || '';
+    if (bioTextarea) {
+        bioTextarea.value = user.bio || '';
+        // Update character counter
+        const charCounter = document.querySelector('.char-counter');
+        if (charCounter) {
+            const bioLength = bioTextarea.value.length;
+            charCounter.textContent = `${bioLength}/500`;
+        }
+    }
 }
 
 function isAuthenticated() {

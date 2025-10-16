@@ -23,17 +23,14 @@ if (strlen($password) > 128) {
 
 try {
 	$pdo = get_pdo();
-    $stmt = $pdo->prepare('SELECT id, full_name, email, username, password_hash FROM users WHERE email = :email OR username = :username LIMIT 1');
+    $stmt = $pdo->prepare('SELECT id, full_name, email, username, password_hash, avatar_url, bio, location FROM users WHERE email = :email OR username = :username LIMIT 1');
     $stmt->execute([':email' => $identifier, ':username' => $identifier]);
 	$user = $stmt->fetch();
 	if (!$user || !password_verify($password, $user['password_hash'])) {
 		json_response(401, ['error' => 'Invalid credentials']);
 	}
 
-    $_SESSION['user_id'] = (int)$user['id'];
-    $_SESSION['username'] = $user['username'];
-    $_SESSION['email'] = $user['email'];
-    $_SESSION['full_name'] = $user['full_name'];
+    loginUser((int)$user['id']);
 
     if (function_exists('session_regenerate_id')) {
         session_regenerate_id(true);
@@ -44,6 +41,9 @@ try {
         'fullName' => $user['full_name'],
         'email' => $user['email'],
         'username' => $user['username'],
+        'avatarUrl' => $user['avatar_url'],
+        'bio' => $user['bio'],
+        'location' => $user['location'],
     ];
 
     json_response(200, ['message' => 'Signed in successfully', 'user' => $responseUser]);

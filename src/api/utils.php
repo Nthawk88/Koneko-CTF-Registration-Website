@@ -43,3 +43,38 @@ function start_secure_session(): void {
 		session_start();
 	}
 }
+
+function getCurrentUser(): ?array {
+	start_secure_session();
+	
+	if (!isset($_SESSION['user_id'])) {
+		return null;
+	}
+	
+	$pdo = get_pdo();
+	$stmt = $pdo->prepare("SELECT id, full_name, email, username, avatar_url, bio, location, role, created_at, updated_at FROM users WHERE id = ?");
+	$stmt->execute([$_SESSION['user_id']]);
+	$user = $stmt->fetch(PDO::FETCH_ASSOC);
+	
+	return $user ?: null;
+}
+
+function getUserById(int $userId): ?array {
+	$pdo = get_pdo();
+	$stmt = $pdo->prepare("SELECT id, full_name, email, username, avatar_url, bio, location, role, created_at, updated_at FROM users WHERE id = ?");
+	$stmt->execute([$userId]);
+	$user = $stmt->fetch(PDO::FETCH_ASSOC);
+	
+	return $user ?: null;
+}
+
+function loginUser(int $userId): void {
+	start_secure_session();
+	$_SESSION['user_id'] = $userId;
+}
+
+function logoutUser(): void {
+	start_secure_session();
+	unset($_SESSION['user_id']);
+	session_destroy();
+}

@@ -495,28 +495,29 @@
                                         <div class="profile-basic-info">
                                             <h3>John "Koneko" Hacker</h3>
                                             <p>john@example.com</p>
-                                            <p><i class="fas fa-calendar"></i> Joined 1/15/2024</p>
                                             <p><i class="fas fa-map-marker-alt"></i> Jakarta, Indonesia</p>
+                                            <p class="profile-bio" style="display: none;"><i class="fas fa-quote-left"></i> <span class="bio-text"></span></p>
+                                            <p><i class="fas fa-calendar"></i> Joined 1/15/2024</p>
                                         </div>
                                     </div>
                                     
                                     <div class="form-grid">
                                         <div class="form-group">
                                             <label>Full Name</label>
-                                            <input type="text" value="John &quot;Koneko&quot; Hacker" disabled>
+                                            <input type="text" name="full_name" value="" disabled>
                                         </div>
                                         <div class="form-group">
                                             <label>Email Address</label>
-                                            <input type="email" value="john@example.com" disabled>
+                                            <input type="email" name="email" value="" disabled>
                                         </div>
                                         <div class="form-group">
                                             <label>Location</label>
-                                            <input type="text" value="Jakarta, Indonesia" disabled>
+                                            <input type="text" name="location" value="" disabled>
                                         </div>
                                         <div class="form-group full-width">
                                             <label>Bio</label>
-                                            <textarea disabled>Cybersecurity enthusiast and CTF player. Love solving complex challenges and learning new techniques.</textarea>
-                                            <div class="char-counter">101/500</div>
+                                            <textarea name="bio" disabled></textarea>
+                                            <div class="char-counter">0/500</div>
                                         </div>
                                     </div>
                                     
@@ -808,7 +809,7 @@
         <canvas id="matrix-canvas"></canvas>
     </div>
     
-    <script src="assets/js/script.js?v=1.4"></script>
+    <script src="assets/js/script.js?v=1.8"></script>
 </body>
 </html>
 

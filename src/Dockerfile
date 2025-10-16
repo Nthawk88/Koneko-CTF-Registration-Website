@@ -4,15 +4,21 @@ FROM php:8.2-apache-bullseye
 # Avoid interactive prompts during apt operations
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Install PostgreSQL extensions and dependencies (with retries)
+# Install PostgreSQL extensions, GD extension, and dependencies (with retries)
 RUN set -eux; \
     apt-get update -o Acquire::Retries=3; \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         wget \
         git \
-        libpq-dev; \
-    docker-php-ext-install -j"$(nproc)" pdo_pgsql pgsql; \
+        libpq-dev \
+        libfreetype6-dev \
+        libjpeg62-turbo-dev \
+        libpng-dev \
+        libwebp-dev \
+        libxpm-dev; \
+    docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp --with-xpm; \
+    docker-php-ext-install -j"$(nproc)" pdo_pgsql pgsql gd; \
     rm -rf /var/lib/apt/lists/*
 
 # Enable Apache modules commonly needed
