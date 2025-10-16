@@ -10,10 +10,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
-    // Restore session and set nav visibility ASAP to avoid flashing protected links
-    restoreUserSession();
-    updateAuthUI();
-
     setupNavigation();
     // Optional features (guarded in case not defined elsewhere)
     try { setupMascotAnimations && setupMascotAnimations(); } catch (e) {}
@@ -27,8 +23,21 @@ function initializeApp() {
     // Ensure profile dropdown gets wired if dashboard is present
     try { setupProfileMenuDropdown && setupProfileMenuDropdown(); } catch (e) {}
     
-    // Load current user data from server
-    loadCurrentUser();
+    // Load current user data from server FIRST, then restore from localStorage as fallback
+    loadCurrentUser().then(() => {
+        // Only restore from localStorage if server session is not available
+        if (!window.currentUser) {
+            restoreUserSession();
+        }
+        updateAuthUI();
+    }).catch(() => {
+        // On error, try localStorage as fallback only if we're not on a protected page
+        const currentPage = location.hash.replace('#', '') || 'home';
+        if (currentPage !== 'dashboard' && currentPage !== 'profile') {
+            restoreUserSession();
+        }
+        updateAuthUI();
+    });
     
     // Cek hash URL saat pertama kali load
     const initialPage = location.hash.replace('#', '') || 'home';
@@ -822,12 +831,16 @@ function restoreUserSession() {
 // Load current user from server
 async function loadCurrentUser() {
     try {
+        console.log('Loading current user from server...');
         const response = await fetch('api/get_current_user.php', {
             credentials: 'same-origin'
         });
         
+        console.log('Server response:', response.status, response.ok);
+        
         if (response.ok) {
             const data = await response.json();
+            console.log('User data from server:', data);
             const userData = data.user;
             if (userData) {
                 // Convert snake_case to camelCase for consistency
@@ -839,13 +852,14 @@ async function loadCurrentUser() {
                     updatedAt: userData.updated_at || userData.updatedAt
                 };
                 localStorage.setItem('currentUser', JSON.stringify(window.currentUser));
-                updateUserUI();
+                console.log('User authenticated, session restored');
             }
         } else {
             // User not authenticated - clear local session too
+            const errorData = await response.json().catch(() => ({}));
+            console.log('User not authenticated:', errorData);
             window.currentUser = null;
             localStorage.removeItem('currentUser');
-            updateAuthUI();
             
             // If we're on a protected page, redirect to signin
             const currentPage = location.hash.replace('#', '') || 'home';
@@ -859,7 +873,6 @@ async function loadCurrentUser() {
         // On error, assume not authenticated
         window.currentUser = null;
         localStorage.removeItem('currentUser');
-        updateAuthUI();
     }
 }
 
@@ -1106,11 +1119,21 @@ async function performSignOut() {
         console.error('Failed to clear localStorage:', e);
     }
     
+    // Clear all user data
     window.currentUser = null;
+    
+    // Force reload to clear any cached session data
     updateAuthUI();
     showNotification('Signed out', 'success');
+    
+    // Redirect to signin page
     location.hash = 'signin';
     showPage('signin');
+    
+    // Force a page reload to ensure all session data is cleared
+    setTimeout(() => {
+        window.location.reload();
+    }, 1000);
 }
 
 // ============================

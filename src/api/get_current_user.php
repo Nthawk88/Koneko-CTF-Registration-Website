@@ -6,10 +6,22 @@ header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
 try {
+    // Debug: Check session state
+    start_secure_session();
+    $sessionId = session_id();
+    $userId = $_SESSION['user_id'] ?? null;
+    
     $user = getCurrentUser();
     
     if (!$user) {
-        json_response(401, ['error' => 'Not authenticated']);
+        json_response(401, [
+            'error' => 'Not authenticated',
+            'debug' => [
+                'session_id' => $sessionId,
+                'user_id_in_session' => $userId,
+                'session_status' => session_status()
+            ]
+        ]);
     }
     
     // Remove sensitive data

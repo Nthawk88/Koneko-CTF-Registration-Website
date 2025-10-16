@@ -47,7 +47,8 @@ function start_secure_session(): void {
 function getCurrentUser(): ?array {
 	start_secure_session();
 	
-	if (!isset($_SESSION['user_id'])) {
+	// Check if session is valid and has user_id
+	if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
 		return null;
 	}
 	
@@ -56,7 +57,13 @@ function getCurrentUser(): ?array {
 	$stmt->execute([$_SESSION['user_id']]);
 	$user = $stmt->fetch(PDO::FETCH_ASSOC);
 	
-	return $user ?: null;
+	// If user not found in database, clear session
+	if (!$user) {
+		$_SESSION = array();
+		return null;
+	}
+	
+	return $user;
 }
 
 function getUserById(int $userId): ?array {
@@ -75,6 +82,19 @@ function loginUser(int $userId): void {
 
 function logoutUser(): void {
 	start_secure_session();
-	unset($_SESSION['user_id']);
+	
+	// Clear all session variables
+	$_SESSION = array();
+	
+	// Delete the session cookie
+	if (ini_get("session.use_cookies")) {
+		$params = session_get_cookie_params();
+		setcookie(session_name(), '', time() - 42000,
+			$params["path"], $params["domain"],
+			$params["secure"], $params["httponly"]
+		);
+	}
+	
+	// Destroy the session
 	session_destroy();
 }
