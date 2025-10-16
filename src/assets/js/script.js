@@ -842,13 +842,24 @@ async function loadCurrentUser() {
                 updateUserUI();
             }
         } else {
-            // User not authenticated
+            // User not authenticated - clear local session too
             window.currentUser = null;
             localStorage.removeItem('currentUser');
             updateAuthUI();
+            
+            // If we're on a protected page, redirect to signin
+            const currentPage = location.hash.replace('#', '') || 'home';
+            if (currentPage === 'dashboard' || currentPage === 'profile') {
+                location.hash = 'signin';
+                showPage('signin');
+            }
         }
     } catch (error) {
         console.error('Error loading current user:', error);
+        // On error, assume not authenticated
+        window.currentUser = null;
+        localStorage.removeItem('currentUser');
+        updateAuthUI();
     }
 }
 
@@ -1073,8 +1084,28 @@ function setupProfileMenuDropdown() {
     }
 }
 
-function performSignOut() {
-    try { localStorage.removeItem('currentUser'); } catch (e) {}
+async function performSignOut() {
+    try {
+        // Call server logout API first
+        const response = await fetch('api/logout.php', {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+        
+        if (response.ok) {
+            console.log('Server logout successful');
+        }
+    } catch (error) {
+        console.error('Logout API error:', error);
+    }
+    
+    // Clear local session regardless of API response
+    try { 
+        localStorage.removeItem('currentUser'); 
+    } catch (e) {
+        console.error('Failed to clear localStorage:', e);
+    }
+    
     window.currentUser = null;
     updateAuthUI();
     showNotification('Signed out', 'success');
