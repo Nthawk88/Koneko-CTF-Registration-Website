@@ -19,12 +19,12 @@
             <div class="nav-menu" id="nav-menu">
                 <a href="#home" class="nav-link active" data-page="home">Home</a>
                 <a href="#competitions" class="nav-link" data-page="competitions">Competitions</a>
-                <a href="#dashboard" class="nav-link" data-page="dashboard" data-auth="protected">Dashboard</a>
-                <a href="#profile" class="nav-link" data-page="profile" data-auth="protected">Profile</a>
-                <a href="#admin" class="nav-link" id="admin-link" data-page="admin" style="display: none; color: #f59e0b;" data-auth="admin">
+                <a href="#dashboard" class="nav-link" data-page="dashboard">Dashboard</a>
+                <a href="#profile" class="nav-link" data-page="profile">Profile</a>
+                <a href="#admin" class="nav-link" id="admin-link" data-page="admin" style="display: none; color: #f59e0b;">
                     <i class="fas fa-crown"></i> Admin Panel
                 </a>
-                <a href="#logout" class="nav-link" data-page="logout" data-auth="protected">Log Out</a>
+                <a href="#logout" class="nav-link" data-page="logout">Log Out</a>
                 <a href="#signin" class="nav-link" data-page="signin">Sign In</a>
                 <a href="#signup" class="nav-link" data-page="signup">Sign Up</a>
             </div>
@@ -806,154 +806,171 @@
                     </div>
 
                     <div class="admin-tabs">
-                        <button class="admin-tab active" onclick="switchAdminTab('competitions')">Competitions</button>
-                        <button class="admin-tab" onclick="switchAdminTab('payments')">Payment Verification</button>
-                        <button class="admin-tab" onclick="switchAdminTab('registrations')">All Registrations</button>
+                        <button class="admin-tab active" data-tab="competitions">Competitions</button>
+                        <button class="admin-tab" data-tab="payments">Payment Verification</button>
+                        <button class="admin-tab" data-tab="registrations">All Registrations</button>
                     </div>
 
-                    <!-- Competitions Tab -->
-                    <div id="admin-competitionsTab" class="admin-tab-content active">
-                        <div class="admin-card">
-                            <h2>Add New Competition</h2>
-                            <div id="competitionAlert"></div>
-                            <form id="addCompetitionForm">
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label>Competition Name *</label>
-                                        <input type="text" name="name" required>
+                    <div class="admin-content">
+                        <!-- Competitions Tab -->
+                        <div id="admin-competitionsTab" class="admin-tab-content active">
+                            <div class="admin-card">
+                                <h2>Add New Competition</h2>
+                                <div id="competitionAlert"></div>
+                                <form id="addCompetitionForm" action="api/register_competition.php">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Competition Name *</label>
+                                            <input type="text" name="name" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Category *</label>
+                                            <select name="category" required>
+                                                <option value="international">International</option>
+                                                <option value="national">National</option>
+                                                <option value="junior">Junior</option>
+                                                <option value="internal">Internal</option>
+                                            </select>
+                                        </div>
                                     </div>
-                                    <div class="form-group">
-                                        <label>Category *</label>
-                                        <select name="category" required>
-                                            <option value="international">International</option>
-                                            <option value="national">National</option>
-                                            <option value="junior">Junior</option>
-                                            <option value="internal">Internal</option>
-                                        </select>
-                                    </div>
-                                </div>
 
-                                <div class="form-group">
-                                    <label>Description</label>
-                                    <textarea name="description"></textarea>
-                                </div>
-
-                                <div class="form-row">
                                     <div class="form-group">
-                                        <label>Start Date *</label>
-                                        <input type="datetime-local" name="start_date" required>
+                                        <label>Description</label>
+                                        <textarea name="description"></textarea>
                                     </div>
-                                    <div class="form-group">
-                                        <label>End Date *</label>
-                                        <input type="datetime-local" name="end_date" required>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Registration Deadline *</label>
-                                        <input type="datetime-local" name="registration_deadline" required>
-                                    </div>
-                                </div>
 
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label>Difficulty Level</label>
-                                        <select name="difficulty_level">
-                                            <option value="beginner">Beginner</option>
-                                            <option value="intermediate">Intermediate</option>
-                                            <option value="advanced">Advanced</option>
-                                            <option value="expert">Expert</option>
-                                        </select>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Start Date *</label>
+                                            <input type="datetime-local" name="start_date" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>End Date *</label>
+                                            <input type="datetime-local" name="end_date" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Registration Deadline *</label>
+                                            <input type="datetime-local" name="registration_deadline" required>
+                                        </div>
                                     </div>
-                                    <div class="form-group">
-                                        <label>Status</label>
-                                        <select name="status">
-                                            <option value="upcoming">Upcoming</option>
-                                            <option value="registration_open">Registration Open</option>
-                                            <option value="registration_closed">Registration Closed</option>
-                                            <option value="ongoing">Ongoing</option>
-                                            <option value="completed">Completed</option>
-                                        </select>
+
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Difficulty Level</label>
+                                            <select name="difficulty_level">
+                                                <option value="beginner">Beginner</option>
+                                                <option value="intermediate">Intermediate</option>
+                                                <option value="advanced">Advanced</option>
+                                                <option value="expert">Expert</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Status</label>
+                                            <select name="status">
+                                                <option value="upcoming">Upcoming</option>
+                                                <option value="registration_open">Registration Open</option>
+                                                <option value="registration_closed">Registration Closed</option>
+                                                <option value="ongoing">Ongoing</option>
+                                                <option value="completed">Completed</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Max Participants</label>
+                                            <input type="number" name="max_participants" min="1">
+                                        </div>
                                     </div>
-                                    <div class="form-group">
-                                        <label>Max Participants</label>
-                                        <input type="number" name="max_participants" min="1">
+
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Prize Pool</label>
+                                            <input type="text" name="prize_pool" placeholder="e.g. $10,000">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Contact Person</label>
+                                            <input type="text" name="contact_person">
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div class="form-row">
                                     <div class="form-group">
-                                        <label>Prize Pool</label>
-                                        <input type="text" name="prize_pool" placeholder="e.g. $10,000">
+                                        <label>Rules</label>
+                                        <textarea name="rules"></textarea>
                                     </div>
+
                                     <div class="form-group">
-                                        <label>Contact Person</label>
-                                        <input type="text" name="contact_person">
+                                        <label>Banner URL</label>
+                                        <input type="url" name="banner_url" placeholder="https://...">
                                     </div>
-                                </div>
 
-                                <div class="form-group">
-                                    <label>Rules</label>
-                                    <textarea name="rules"></textarea>
-                                </div>
+                                    <button type="submit" class="btn btn-primary">Add Competition</button>
+                                </form>
+                            </div>
 
-                                <div class="form-group">
-                                    <label>Banner URL</label>
-                                    <input type="url" name="banner_url" placeholder="https://...">
-                                </div>
-
-                                <button type="submit" class="btn btn-primary">Add Competition</button>
-                            </form>
-                        </div>
-
-                        <div class="admin-card">
-                            <h2>Existing Competitions</h2>
-                            <div id="adminCompetitionsList" class="competitions-grid"></div>
-                        </div>
-                    </div>
-
-                    <!-- Payments Tab -->
-                    <div id="admin-paymentsTab" class="admin-tab-content">
-                        <div class="admin-card">
-                            <h2>Pending Payment Verifications</h2>
-                            <div id="paymentAlert"></div>
-                            <div class="table-container">
-                                <table id="paymentsTable">
-                                    <thead>
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>User</th>
-                                            <th>Competition</th>
-                                            <th>Team Name</th>
-                                            <th>Payment Status</th>
-                                            <th>Registered At</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="paymentsTableBody"></tbody>
-                                </table>
+                            <div class="admin-card">
+                                <h2>Existing Competitions</h2>
+                                <div id="adminCompetitionsList" class="competitions-grid"></div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Registrations Tab -->
-                    <div id="admin-registrationsTab" class="admin-tab-content">
-                        <div class="admin-card">
-                            <h2>All Registrations</h2>
-                            <div class="table-container">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>User</th>
-                                            <th>Competition</th>
-                                            <th>Team Name</th>
-                                            <th>Status</th>
-                                            <th>Payment</th>
-                                            <th>Score</th>
-                                            <th>Registered At</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="registrationsTableBody"></tbody>
-                                </table>
+                        <!-- Payments Tab -->
+                        <div id="admin-paymentsTab" class="admin-tab-content">
+                            <div class="admin-card">
+                                <h2>Pending Payment Verifications</h2>
+                                <div id="paymentAlert"></div>
+                                <div class="table-container">
+                                    <table id="paymentsTable">
+                                        <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>User</th>
+                                                <th>Competition</th>
+                                                <th>Team Name</th>
+                                                <th>Payment Status</th>
+                                                <th>Registered At</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="paymentsTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Registrations Tab -->
+                        <div id="admin-registrationsTab" class="admin-tab-content">
+                            <div class="admin-card">
+                                <h2>All Registrations</h2>
+                                <div class="table-container">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>User</th>
+                                                <th>Competition</th>
+                                                <th>Team Name</th>
+                                                <th>Status</th>
+                                                <th>Payment</th>
+                                                <th>Score</th>
+                                                <th>Registered At</th>
+                                            </tr>
+                            <div class="admin-card">
+                                <h2>All Registrations</h2>
+                                <div class="table-container">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>User</th>
+                                                <th>Competition</th>
+                                                <th>Team Name</th>
+                                                <th>Status</th>
+                                                <th>Payment</th>
+                                                <th>Score</th>
+                                                <th>Registered At</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="registrationsTableBody"></tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -988,7 +1005,6 @@
                                 <button type="submit" class="btn btn-primary">Update Competition</button>
                             </form>
                         </div>
-                    </div>
                 </div>
             </section>
         </div>

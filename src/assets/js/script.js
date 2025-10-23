@@ -1,6 +1,12 @@
 const state = {
 	currentPage: 'home',
 	currentUser: null,
+	admin: {
+		initialized: false,
+		competitions: [],
+		payments: [],
+		registrations: [],
+	},
 };
 
 document.addEventListener('DOMContentLoaded', init);
@@ -10,6 +16,7 @@ async function init() {
 	wireAuthForms();
 	wireProfileEditor();
 	wireSignOut();
+	setupAdminUI();
 
 	await refreshSession();
 	applyUserToUI();
@@ -68,6 +75,10 @@ function applyUserToUI() {
 	updateDashboardGreeting();
 	updateProfileSummary();
 	populateProfileForm();
+
+	if (state.currentUser?.role === 'admin') {
+		refreshAdminData();
+	}
 }
 
 function updateAuthVisibility() {
@@ -80,10 +91,18 @@ function updateAuthVisibility() {
 	const signinLink = document.querySelector('.nav-link[data-page="signin"]');
 	const signupLink = document.querySelector('.nav-link[data-page="signup"]');
 	const logoutLink = document.querySelector('.nav-link[data-page="logout"]');
+	const profileLink = document.querySelector('.nav-link[data-page="profile"]');
+	const dashboardLink = document.querySelector('.nav-link[data-page="dashboard"]');
+	const adminLink = document.getElementById('admin-link');
 
 	if (signinLink) signinLink.style.display = authed ? 'none' : '';
 	if (signupLink) signupLink.style.display = authed ? 'none' : '';
 	if (logoutLink) logoutLink.style.display = authed ? '' : 'none';
+	if (profileLink) profileLink.style.display = authed ? '' : 'none';
+	if (dashboardLink) dashboardLink.style.display = authed ? '' : 'none';
+	if (adminLink) {
+		adminLink.style.display = authed && state.currentUser?.role === 'admin' ? '' : 'none';
+	}
 
 	const profileMenu = document.getElementById('user-profile-menu');
 	if (profileMenu) profileMenu.style.display = authed ? '' : 'none';
@@ -223,6 +242,17 @@ function showPage(pageId) {
 		pageId = 'signin';
 	}
 
+	if (pageId === 'admin' && (!state.currentUser || state.currentUser.role !== 'admin')) {
+		const message = state.currentUser
+			? 'Access denied. Admin privileges required.'
+			: 'Please sign in to access the admin panel';
+		notify(message, 'error');
+		pageId = state.currentUser ? 'home' : 'signin';
+	} else if (pageId === 'admin') {
+		setActiveAdminTab('competitions');
+		refreshAdminData();
+	}
+
 	const target = document.getElementById(pageId);
 	if (target) {
 		target.classList.add('active');
@@ -293,23 +323,23 @@ function wireAuthForms() {
 				confirmPassword: inputs[4]?.value || '',
 			};
 
-	if (payload.password !== payload.confirmPassword) {
-		notify('Passwords do not match', 'error');
-		return;
-	}
+			if (payload.password !== payload.confirmPassword) {
+				notify('Passwords do not match', 'error');
+				return;
+			}
 
-	try {
-		await apiRequest('signup.php', {
-			method: 'POST',
-			body: payload,
+			try {
+				await apiRequest('signup.php', {
+					method: 'POST',
+					body: payload,
+				});
+				notify('Account created. Please sign in.', 'success');
+				showPage('signin');
+				window.location.hash = 'signin';
+			} catch (err) {
+				notify(err.message, 'error');
+			}
 		});
-		notify('Account created. Please sign in.', 'success');
-		showPage('signin');
-		window.location.hash = 'signin';
-	} catch (err) {
-		notify(err.message, 'error');
-	}
-});
 	}
 }
 
@@ -376,6 +406,410 @@ function wireSignOut() {
 	}
 }
 
+function setupAdminUI() {
+	const adminPage = document.getElementById('admin');
+	if (!adminPage || state.admin.initialized) return;
+
+	const tabButtons = adminPage.querySelectorAll('.admin-tab');
+	tabButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+			const tabKey = btn.dataset.tab;
+			if (!tabKey) return;
+			setActiveAdminTab(tabKey);
+			if (state.currentUser?.role === 'admin') {
+				switch (tabKey) {
+					case 'competitions':
+						fetchAdminCompetitions();
+						break;
+					case 'payments':
+						fetchAdminPayments();
+						break;
+					case 'registrations':
+						fetchAdminRegistrations();
+						break;
+					default:
+						break;
+				}
+			}
+        });
+    });
+
+	const addForm = document.getElementById('addCompetitionForm');
+	if (addForm) {
+		addForm.addEventListener('submit', handleAdminCompetitionCreate);
+	}
+
+	const editForm = document.getElementById('editCompetitionForm');
+	if (editForm) {
+		editForm.addEventListener('submit', handleAdminCompetitionUpdate);
+	}
+
+	const modalClose = document.querySelector('#editCompetitionModal .modal-close');
+	if (modalClose) {
+		modalClose.addEventListener('click', closeEditCompetitionModal);
+	}
+
+	const editModal = document.getElementById('editCompetitionModal');
+	if (editModal) {
+		editModal.addEventListener('click', (event) => {
+			if (event.target === editModal) {
+				closeEditCompetitionModal();
+			}
+		});
+	}
+
+	const competitionsList = document.getElementById('adminCompetitionsList');
+	if (competitionsList) {
+		competitionsList.addEventListener('click', handleAdminCompetitionsClick);
+	}
+
+	const paymentsBody = document.getElementById('paymentsTableBody');
+	if (paymentsBody) {
+		paymentsBody.addEventListener('click', handleAdminPaymentsClick);
+	}
+
+	state.admin.initialized = true;
+	window.closeEditCompetitionModal = closeEditCompetitionModal;
+}
+
+function setActiveAdminTab(tabKey) {
+	const tabs = document.querySelectorAll('.admin-tab');
+	const contents = document.querySelectorAll('.admin-tab-content');
+	tabs.forEach((tab) => {
+		tab.classList.toggle('active', tab.dataset.tab === tabKey);
+	});
+	contents.forEach((content) => {
+		content.classList.toggle('active', content.id === `admin-${tabKey}Tab`);
+	});
+}
+
+async function handleAdminCompetitionCreate(event) {
+	event.preventDefault();
+	const form = event.currentTarget;
+	const submitBtn = form.querySelector('button[type="submit"]');
+	const data = Object.fromEntries(new FormData(form).entries());
+
+	try {
+		if (submitBtn) submitBtn.disabled = true;
+		const response = await apiRequest('admin/manage_competitions.php', {
+			method: 'POST',
+			body: data,
+		});
+		showAdminAlert('competitionAlert', response.message || 'Competition added successfully!', 'success');
+		form.reset();
+		await fetchAdminCompetitions();
+	} catch (err) {
+		showAdminAlert('competitionAlert', err.message, 'error');
+	} finally {
+		if (submitBtn) submitBtn.disabled = false;
+	}
+}
+
+async function handleAdminCompetitionUpdate(event) {
+	event.preventDefault();
+	const form = event.currentTarget;
+	const submitBtn = form.querySelector('button[type="submit"]');
+	const data = Object.fromEntries(new FormData(form).entries());
+
+	if (!data.id) {
+		showAdminAlert('competitionAlert', 'Missing competition identifier', 'error');
+		return;
+	}
+
+	try {
+		if (submitBtn) submitBtn.disabled = true;
+		await apiRequest('admin/manage_competitions.php', {
+			method: 'PUT',
+			body: data,
+		});
+		showAdminAlert('competitionAlert', 'Competition updated successfully!', 'success');
+		closeEditCompetitionModal();
+		await fetchAdminCompetitions();
+	} catch (err) {
+		showAdminAlert('competitionAlert', err.message, 'error');
+	} finally {
+		if (submitBtn) submitBtn.disabled = false;
+	}
+}
+
+function handleAdminCompetitionsClick(event) {
+	const button = event.target.closest('button[data-action]');
+	if (!button) return;
+	const competitionId = button.dataset.id;
+	if (!competitionId) return;
+
+	if (button.dataset.action === 'edit') {
+		openEditCompetitionModal(competitionId);
+	}
+
+	if (button.dataset.action === 'delete') {
+		deleteAdminCompetition(competitionId);
+	}
+}
+
+function openEditCompetitionModal(id) {
+	const competition = state.admin.competitions.find((comp) => String(comp.id) === String(id));
+	if (!competition) {
+		notify('Competition not found', 'error');
+		return;
+	}
+
+	const form = document.getElementById('editCompetitionForm');
+	if (!form) return;
+
+	form.querySelector('input[name="id"]').value = competition.id;
+	form.querySelector('input[name="name"]').value = competition.name || '';
+	form.querySelector('textarea[name="description"]').value = competition.description || '';
+	form.querySelector('select[name="status"]').value = competition.status || 'upcoming';
+
+	const modal = document.getElementById('editCompetitionModal');
+	if (modal) {
+		modal.classList.add('active');
+	}
+}
+
+function closeEditCompetitionModal() {
+	const modal = document.getElementById('editCompetitionModal');
+	if (modal) {
+		modal.classList.remove('active');
+	}
+}
+
+async function deleteAdminCompetition(id) {
+	if (!window.confirm('Are you sure you want to delete this competition? This will also delete all registrations.')) return;
+
+	try {
+		await apiRequest('admin/manage_competitions.php', {
+			method: 'DELETE',
+			body: { id },
+		});
+		showAdminAlert('competitionAlert', 'Competition deleted successfully!', 'success');
+		await fetchAdminCompetitions();
+	} catch (err) {
+		showAdminAlert('competitionAlert', err.message, 'error');
+	}
+}
+
+function handleAdminPaymentsClick(event) {
+	const button = event.target.closest('button[data-action]');
+	if (!button) return;
+	const registrationId = button.dataset.id;
+	if (!registrationId) return;
+
+	if (button.dataset.action === 'approve') {
+		verifyAdminPayment(registrationId, 'paid');
+	}
+
+	if (button.dataset.action === 'reject') {
+		verifyAdminPayment(registrationId, 'refunded');
+	}
+}
+
+async function refreshAdminData() {
+	if (!state.currentUser || state.currentUser.role !== 'admin') return;
+
+	await Promise.allSettled([
+		fetchAdminCompetitions(),
+		fetchAdminPayments(),
+		fetchAdminRegistrations(),
+	]);
+}
+
+async function fetchAdminCompetitions() {
+	if (!state.currentUser || state.currentUser.role !== 'admin') return;
+
+	try {
+		const competitions = await apiRequest('admin/manage_competitions.php');
+		state.admin.competitions = Array.isArray(competitions) ? competitions : [];
+		renderAdminCompetitions();
+            } catch (err) {
+		state.admin.competitions = [];
+		renderAdminCompetitions();
+		showAdminAlert('competitionAlert', err.message, 'error');
+	}
+}
+
+async function fetchAdminPayments() {
+	if (!state.currentUser || state.currentUser.role !== 'admin') return;
+
+	try {
+		const payments = await apiRequest('admin/verify_payments.php');
+		state.admin.payments = Array.isArray(payments) ? payments : [];
+		renderAdminPayments();
+	} catch (err) {
+		state.admin.payments = [];
+		renderAdminPayments();
+		showAdminAlert('paymentAlert', err.message, 'error');
+	}
+}
+
+async function fetchAdminRegistrations() {
+	if (!state.currentUser || state.currentUser.role !== 'admin') return;
+
+	try {
+		const registrations = await apiRequest('admin/get_registrations.php');
+		state.admin.registrations = Array.isArray(registrations) ? registrations : [];
+		renderAdminRegistrations();
+	} catch (err) {
+		state.admin.registrations = [];
+		renderAdminRegistrations();
+	}
+}
+
+function renderAdminCompetitions() {
+	const container = document.getElementById('adminCompetitionsList');
+	if (!container) return;
+
+	if (!state.admin.competitions.length) {
+		container.innerHTML = '<p class="empty-state">No competitions yet.</p>';
+		return;
+	}
+
+	container.innerHTML = state.admin.competitions
+		.map((comp) => {
+			const statusLabel = String(comp.status || 'upcoming').replace(/_/g, ' ');
+			const participants = comp.current_participants || 0;
+			const maxParticipants = comp.max_participants ? `/${comp.max_participants}` : '';
+			return `
+				<div class="competition-card">
+					<div class="competition-header">
+						<div class="competition-title">${escapeHtml(comp.name || 'Untitled Competition')}</div>
+						<span class="status-badge status-${escapeHtml(comp.status || 'upcoming')}">${escapeHtml(statusLabel)}</span>
+					</div>
+					<p><strong>Category:</strong> ${escapeHtml(comp.category || 'N/A')}</p>
+					<p><strong>Difficulty:</strong> ${escapeHtml(comp.difficulty_level || 'N/A')}</p>
+					<p><strong>Start:</strong> ${escapeHtml(formatDate(comp.start_date))}</p>
+					<p><strong>End:</strong> ${escapeHtml(formatDate(comp.end_date))}</p>
+					<p><strong>Participants:</strong> ${participants}${maxParticipants}</p>
+					${comp.prize_pool ? `<p><strong>Prize:</strong> ${escapeHtml(comp.prize_pool)}</p>` : ''}
+					<div class="competition-actions">
+						<button type="button" class="btn btn-sm btn-warning" data-action="edit" data-id="${comp.id}">Edit</button>
+						<button type="button" class="btn btn-sm btn-danger" data-action="delete" data-id="${comp.id}">Delete</button>
+					</div>
+				</div>
+			`;
+		})
+		.join('');
+}
+
+function renderAdminPayments() {
+	const tbody = document.getElementById('paymentsTableBody');
+	if (!tbody) return;
+
+	if (!state.admin.payments.length) {
+		tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No pending payments</td></tr>';
+		return;
+	}
+
+	tbody.innerHTML = state.admin.payments
+		.map((payment) => `
+			<tr>
+				<td>${escapeHtml(payment.id)}</td>
+				<td>
+					<strong>${escapeHtml(payment.user_name || 'Unknown')}</strong><br>
+					<small>${escapeHtml(payment.user_email || '')}</small>
+				</td>
+				<td>${escapeHtml(payment.competition_name || '')}</td>
+				<td>${payment.team_name ? escapeHtml(payment.team_name) : '-'}</td>
+				<td>
+					<span class="status-badge ${payment.payment_status === 'paid' ? 'status-registration_open' : 'status-upcoming'}">
+						${escapeHtml(payment.payment_status)}
+					</span>
+				</td>
+				<td>${escapeHtml(formatDate(payment.registered_at))}</td>
+				<td>
+					<button type="button" class="btn btn-sm btn-success" data-action="approve" data-id="${payment.id}">Approve</button>
+					<button type="button" class="btn btn-sm btn-danger" data-action="reject" data-id="${payment.id}">Reject</button>
+				</td>
+			</tr>
+		`)
+		.join('');
+}
+
+function renderAdminRegistrations() {
+	const tbody = document.getElementById('registrationsTableBody');
+	if (!tbody) return;
+
+	if (!state.admin.registrations.length) {
+		tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No registrations yet</td></tr>';
+		return;
+	}
+
+	tbody.innerHTML = state.admin.registrations
+		.map((reg) => `
+			<tr>
+				<td>${escapeHtml(reg.id)}</td>
+				<td>
+					<strong>${escapeHtml(reg.user_name || 'Unknown')}</strong><br>
+					<small>@${escapeHtml(reg.username || '')}</small>
+				</td>
+				<td>${escapeHtml(reg.competition_name || '')}</td>
+				<td>${reg.team_name ? escapeHtml(reg.team_name) : '-'}</td>
+				<td>
+					<span class="status-badge ${reg.registration_status === 'approved' ? 'status-registration_open' : 'status-upcoming'}">
+						${escapeHtml(reg.registration_status || '')}
+					</span>
+				</td>
+				<td>
+					<span class="status-badge ${reg.payment_status === 'paid' ? 'status-registration_open' : 'status-upcoming'}">
+						${escapeHtml(reg.payment_status || '')}
+					</span>
+				</td>
+				<td>${escapeHtml(reg.score || 0)}</td>
+				<td>${escapeHtml(formatDate(reg.registered_at))}</td>
+			</tr>
+		`)
+		.join('');
+}
+
+async function verifyAdminPayment(registrationId, status) {
+	try {
+		await apiRequest('admin/verify_payments.php', {
+			method: 'POST',
+			body: {
+				registration_id: registrationId,
+				payment_status: status,
+			},
+		});
+		const successMessage = status === 'paid' ? 'Payment approved successfully!' : 'Payment rejected successfully!';
+		showAdminAlert('paymentAlert', successMessage, 'success');
+		await Promise.allSettled([fetchAdminPayments(), fetchAdminRegistrations()]);
+	} catch (err) {
+		showAdminAlert('paymentAlert', err.message, 'error');
+	}
+}
+
+function showAdminAlert(elementId, message, type = 'info') {
+	const container = document.getElementById(elementId);
+	if (!container) return;
+	container.innerHTML = `<div class="alert alert-${escapeHtml(type)}">${escapeHtml(message)}</div>`;
+	setTimeout(() => {
+		if (container.innerHTML.includes(message)) {
+			container.innerHTML = '';
+		}
+	}, 5000);
+}
+
+function formatDate(dateString) {
+	if (!dateString) return 'N/A';
+	const date = new Date(dateString);
+	if (Number.isNaN(date.getTime())) return dateString;
+	return date.toLocaleDateString('en-US', {
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit',
+	});
+}
+
+function escapeHtml(value) {
+	if (value === null || value === undefined) return '';
+	const div = document.createElement('div');
+	div.textContent = String(value);
+	return div.innerHTML;
+}
+
 async function submitProfileUpdate() {
 	const payload = {
 		fullName: document.querySelector('#info-tab input[name="full_name"]')?.value.trim() ?? '',
@@ -431,6 +865,9 @@ async function performSignOut() {
 	}
 
 	state.currentUser = null;
+	state.admin.competitions = [];
+	state.admin.payments = [];
+	state.admin.registrations = [];
 	applyUserToUI();
 	notify('Signed out', 'success');
 	showPage('signin');

@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Check admin access
 async function checkAdminAccess() {
     try {
-        const response = await fetch('/api/get_current_user.php');
+        const response = await fetch('api/get_current_user.php');
         const data = await response.json();
         
         if (!data.user || data.user.role !== 'admin') {
@@ -71,7 +71,7 @@ function switchTab(tab) {
 // Load competitions
 async function loadCompetitions() {
     try {
-        const response = await fetch('/api/admin/manage_competitions.php');
+        const response = await fetch('api/admin/manage_competitions.php');
         const competitions = await response.json();
         
         const container = document.getElementById('competitionsList');
@@ -114,7 +114,7 @@ async function addCompetition(form) {
         
         console.log('Sending competition data:', data);
         
-        const response = await fetch('/api/admin/manage_competitions.php', {
+        const response = await fetch('api/admin/manage_competitions.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -145,7 +145,7 @@ async function addCompetition(form) {
 // Edit competition
 async function editCompetition(id) {
     try {
-        const response = await fetch('/api/admin/manage_competitions.php');
+        const response = await fetch('api/admin/manage_competitions.php');
         const competitions = await response.json();
         const competition = competitions.find(c => c.id == id);
         
@@ -175,7 +175,7 @@ async function updateCompetition(form) {
         const formData = new FormData(form);
         const data = Object.fromEntries(formData.entries());
         
-        const response = await fetch('/api/admin/manage_competitions.php', {
+        const response = await fetch('api/admin/manage_competitions.php', {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
@@ -206,7 +206,7 @@ async function deleteCompetition(id) {
     }
     
     try {
-        const response = await fetch('/api/admin/manage_competitions.php', {
+        const response = await fetch('api/admin/manage_competitions.php', {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json'
@@ -232,7 +232,7 @@ async function deleteCompetition(id) {
 // Load pending payments
 async function loadPayments() {
     try {
-        const response = await fetch('/api/admin/verify_payments.php');
+        const response = await fetch('api/admin/verify_payments.php');
         const payments = await response.json();
         
         const tbody = document.getElementById('paymentsTableBody');
@@ -273,7 +273,7 @@ async function loadPayments() {
 // Verify payment
 async function verifyPayment(registrationId, status) {
     try {
-        const response = await fetch('/api/admin/verify_payments.php', {
+        const response = await fetch('api/admin/verify_payments.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -303,7 +303,7 @@ async function verifyPayment(registrationId, status) {
 // Load all registrations
 async function loadRegistrations() {
     try {
-        const response = await fetch('/api/admin/get_registrations.php');
+        const response = await fetch('api/admin/get_registrations.php');
         const registrations = await response.json();
         
         const tbody = document.getElementById('registrationsTableBody');
@@ -350,7 +350,7 @@ function closeEditModal() {
 // Logout
 async function logout() {
     try {
-        await fetch('/api/logout.php');
+        await fetch('api/logout.php');
         window.location.href = '/index.html';
     } catch (error) {
         console.error('Error logging out:', error);
