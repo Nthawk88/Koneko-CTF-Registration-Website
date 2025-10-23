@@ -125,6 +125,24 @@ function showPage(pageId) {
         location.hash = 'signin';
         pageId = 'signin';
     }
+    
+    // Admin-only guard
+    if (pageId === 'admin') {
+        if (!isAuthenticated()) {
+            showNotification('Please sign in to access admin panel', 'error');
+            location.hash = 'signin';
+            pageId = 'signin';
+        } else if (!window.currentUser || window.currentUser.role !== 'admin') {
+            showNotification('Access denied. Admin privileges required.', 'error');
+            location.hash = 'home';
+            pageId = 'home';
+        } else {
+            // Load admin data when accessing admin page
+            setTimeout(() => {
+                loadAdminCompetitions();
+            }, 100);
+        }
+    }
 
     // Show target page
     const targetPage = document.getElementById(pageId);
@@ -316,44 +334,25 @@ function setupTabs() {
     });
 }
 
-function loadCompetitions() {
-    // Mock data for competitions
-    const mockCompetitions = [
-        {
-            id: 1,
-            title: "Web Security Challenge",
-            description: "Test your web application security skills",
-            status: "open",
-            participants: 245,
-            difficulty: "Medium",
-            startDate: "2025-09-25",
-            endDate: "2025-09-30"
-        },
-        {
-            id: 2,
-            title: "Cryptography Quest",
-            description: "Decrypt the secrets and find the hidden messages",
-            status: "upcoming",
-            participants: 189,
-            difficulty: "Hard",
-            startDate: "2025-10-01",
-            endDate: "2025-10-05"
-        },
-        {
-            id: 3,
-            title: "Binary Exploitation",
-            description: "Exploit vulnerabilities in binary programs",
-            status: "ended",
-            participants: 312,
-            difficulty: "Expert",
-            startDate: "2025-09-15",
-            endDate: "2025-09-20"
+async function loadCompetitions() {
+    try {
+        const response = await fetch('/api/competitions.php');
+        const data = await response.json();
+        
+        if (response.ok) {
+            competitions = data || [];
+            renderCompetitions();
+            setupCompetitionFilters();
+        } else {
+            console.error('Error loading competitions:', data.error);
+            competitions = [];
+            renderCompetitions();
         }
-    ];
-
-    competitions = mockCompetitions;
-    renderCompetitions();
-    setupCompetitionFilters();
+    } catch (error) {
+        console.error('Error fetching competitions:', error);
+        competitions = [];
+        renderCompetitions();
+    }
 }
 
 function setupCompetitionFilters() {
@@ -387,127 +386,151 @@ function renderCompetitions() {
     const activeFilter = document.querySelector('.filter-btn.active')?.getAttribute('data-filter') || 'all';
 
     let filteredCompetitions = competitions.filter(comp => {
-        const matchesSearch = comp.title.toLowerCase().includes(searchTerm) ||
-                            comp.description.toLowerCase().includes(searchTerm);
-        const matchesFilter = activeFilter === 'all' || comp.status === activeFilter;
+        const matchesSearch = (comp.name && comp.name.toLowerCase().includes(searchTerm)) ||
+                            (comp.description && comp.description.toLowerCase().includes(searchTerm)) ||
+                            (comp.category && comp.category.toLowerCase().includes(searchTerm));
+        
+        let matchesFilter = true;
+        if (activeFilter === 'open') {
+            matchesFilter = comp.status === 'registration_open';
+        } else if (activeFilter === 'upcoming') {
+            matchesFilter = comp.status === 'upcoming';
+        } else if (activeFilter === 'ended') {
+            matchesFilter = comp.status === 'completed';
+        }
+        
         return matchesSearch && matchesFilter;
     });
 
+    if (filteredCompetitions.length === 0) {
+        container.innerHTML = '<div style="text-align: center; padding: 3rem; color: #64748b;"><p>No competitions found.</p></div>';
+        return;
+    }
+
     container.innerHTML = filteredCompetitions.map(comp => `
         <div class="competition-card ${comp.status}">
+            ${comp.banner_url ? `<div style="width: 100%; height: 150px; background: url('${escapeHtml(comp.banner_url)}') center/cover; border-radius: 8px 8px 0 0; margin: -1rem -1rem 1rem -1rem;"></div>` : ''}
             <div class="competition-header">
-                <h3>${comp.title}</h3>
-                <span class="competition-status status-${comp.status}">${comp.status}</span>
+                <h3>${escapeHtml(comp.name)}</h3>
+                <span class="competition-status status-${comp.status}">${comp.status.replace('_', ' ')}</span>
             </div>
-            <p class="competition-description">${comp.description}</p>
+            <p class="competition-description">${escapeHtml(comp.description || 'No description available')}</p>
             <div class="competition-meta">
                 <span class="meta-item">
                     <i class="fas fa-users"></i>
-                    ${comp.participants} participants
+                    ${comp.current_participants || 0}${comp.max_participants ? '/' + comp.max_participants : ''} participants
                 </span>
                 <span class="meta-item">
                     <i class="fas fa-chart-line"></i>
-                    ${comp.difficulty}
+                    ${comp.difficulty_level}
                 </span>
                 <span class="meta-item">
-                    <i class="fas fa-calendar"></i>
-                    ${comp.startDate} - ${comp.endDate}
+                    <i class="fas fa-tag"></i>
+                    ${comp.category}
                 </span>
             </div>
+            <div class="competition-meta">
+                <span class="meta-item">
+                    <i class="fas fa-calendar"></i>
+                    ${formatDate(comp.start_date)} - ${formatDate(comp.end_date)}
+                </span>
+            </div>
+            ${comp.prize_pool ? `<div style="margin: 0.5rem 0; font-weight: 600; color: #10b981;"><i class="fas fa-trophy"></i> Prize: ${escapeHtml(comp.prize_pool)}</div>` : ''}
             <div class="competition-actions">
-                <button class="btn btn-primary btn-sm">
-                    <i class="fas fa-eye"></i>
-                    View Details
-                </button>
-                ${comp.status === 'open' ? '<button class="btn btn-outline btn-sm"><i class="fas fa-play"></i> Join</button>' : ''}
+                ${comp.is_registered ? 
+                    '<button class="btn btn-outline btn-sm" disabled><i class="fas fa-check"></i> Registered</button>' :
+                    (comp.status === 'registration_open' || comp.status === 'upcoming') ? 
+                        `<button class="btn btn-primary btn-sm" onclick="showRegisterModal(${comp.id})"><i class="fas fa-play"></i> Register</button>` :
+                        '<button class="btn btn-outline btn-sm" disabled>Closed</button>'
+                }
             </div>
         </div>
     `).join('');
 }
 
-function loadDashboardData() {
-    // Mock data for dashboard
-    const mockDashboardCompetitions = [
-        {
-            id: 1,
-            title: "Web Security Challenge",
-            status: "active",
-            progress: 65,
-            rank: 12,
-            points: 850
-        },
-        {
-            id: 2,
-            title: "Cryptography Quest",
-            status: "upcoming",
-            progress: 0,
-            rank: null,
-            points: 0
+async function loadDashboardData() {
+    try {
+        const response = await fetch('/api/my_competitions.php');
+        const data = await response.json();
+        
+        if (response.ok) {
+            dashboardCompetitions = data || [];
+            // Mock activity feed for now - can be implemented later
+            activityFeed = [];
+            renderDashboard();
+        } else {
+            console.error('Error loading dashboard data:', data.error);
+            dashboardCompetitions = [];
+            activityFeed = [];
+            renderDashboard();
         }
-    ];
-
-    const mockActivityFeed = [
-        {
-            type: "challenge_solved",
-            message: "Solved 'SQL Injection' challenge",
-            time: "2 hours ago",
-            points: 50
-        },
-        {
-            type: "competition_joined",
-            message: "Joined 'Web Security Challenge'",
-            time: "1 day ago",
-            points: 0
-        },
-        {
-            type: "rank_improved",
-            message: "Rank improved to #42",
-            time: "3 days ago",
-            points: 0
-        }
-    ];
-
-    dashboardCompetitions = mockDashboardCompetitions;
-    activityFeed = mockActivityFeed;
-    renderDashboard();
+    } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        dashboardCompetitions = [];
+        activityFeed = [];
+        renderDashboard();
+    }
 }
 
 function renderDashboard() {
     // Render dashboard competitions
     const dashboardContainer = document.getElementById('dashboard-competitions');
     if (dashboardContainer) {
-        dashboardContainer.innerHTML = dashboardCompetitions.map(comp => `
-            <div class="competition-card dashboard ${comp.status}">
-                <div class="competition-header">
-                    <h3>${comp.title}</h3>
-                    <span class="competition-status status-${comp.status}">${comp.status}</span>
-                </div>
-                ${comp.status === 'active' ? `
-                    <div class="progress-section">
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${comp.progress}%"></div>
-                        </div>
-                        <span class="progress-text">${comp.progress}% Complete</span>
-                    </div>
-                    <div class="competition-stats">
-                        <div class="stat">
-                            <span class="stat-label">Current Rank</span>
-                            <span class="stat-value">#${comp.rank}</span>
-                        </div>
-                        <div class="stat">
-                            <span class="stat-label">Points</span>
-                            <span class="stat-value">${comp.points}</span>
-                        </div>
-                    </div>
-                ` : ''}
-                <div class="competition-actions">
-                    <button class="btn btn-primary btn-sm">
-                        <i class="fas fa-eye"></i>
-                        View Details
+        if (dashboardCompetitions.length === 0) {
+            dashboardContainer.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: #64748b;">
+                    <i class="fas fa-trophy" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
+                    <p>You haven't registered for any competitions yet.</p>
+                    <button class="btn btn-primary" onclick="showPage('competitions')" style="margin-top: 1rem;">
+                        <i class="fas fa-search"></i> Browse Competitions
                     </button>
                 </div>
-            </div>
-        `).join('');
+            `;
+        } else {
+            dashboardContainer.innerHTML = dashboardCompetitions.map(comp => `
+                <div class="competition-card dashboard ${comp.status}">
+                    <div class="competition-header">
+                        <h3>${escapeHtml(comp.name)}</h3>
+                        <span class="competition-status status-${comp.status}">${comp.status.replace('_', ' ')}</span>
+                    </div>
+                    <p style="color: #64748b; margin: 0.5rem 0;">${escapeHtml(comp.description || '')}</p>
+                    <div class="competition-meta">
+                        <span class="meta-item">
+                            <i class="fas fa-users"></i>
+                            Team: ${comp.team_name ? escapeHtml(comp.team_name) : 'Solo'}
+                        </span>
+                        <span class="meta-item">
+                            <i class="fas fa-calendar"></i>
+                            ${formatDate(comp.start_date)}
+                        </span>
+                    </div>
+                    ${comp.status === 'ongoing' ? `
+                        <div class="competition-stats">
+                            <div class="stat">
+                                <span class="stat-label">Score</span>
+                                <span class="stat-value">${comp.score || 0}</span>
+                            </div>
+                            ${comp.rank ? `
+                            <div class="stat">
+                                <span class="stat-label">Rank</span>
+                                <span class="stat-value">#${comp.rank}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                    <div class="competition-meta" style="margin-top: 0.5rem;">
+                        <span class="meta-item" style="font-size: 0.875rem;">
+                            <strong>Registration:</strong> 
+                            <span class="status-badge status-${comp.registration_status}">${comp.registration_status}</span>
+                        </span>
+                        <span class="meta-item" style="font-size: 0.875rem;">
+                            <strong>Payment:</strong> 
+                            <span class="status-badge status-${comp.payment_status === 'paid' ? 'registration_open' : 'upcoming'}">${comp.payment_status}</span>
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+        }
     }
 
     // Render activity feed
@@ -1039,6 +1062,7 @@ function updateAuthUI() {
     const linkProfile = document.querySelector('.nav-link[data-page="profile"]');
     const linkSignin = document.querySelector('.nav-link[data-page="signin"]');
     const linkSignup = document.querySelector('.nav-link[data-page="signup"]');
+    const linkAdmin = document.getElementById('admin-link');
 
     if (linkDashboard) linkDashboard.style.display = isAuthed ? 'inline-block' : 'none';
     if (linkProfile) linkProfile.style.display = isAuthed ? 'inline-block' : 'none';
@@ -1046,6 +1070,11 @@ function updateAuthUI() {
     if (linkLogout) linkLogout.style.display = isAuthed ? 'inline-block' : 'none';
     if (linkSignin) linkSignin.style.display = isAuthed ? 'none' : '';
     if (linkSignup) linkSignup.style.display = isAuthed ? 'none' : '';
+    
+    // Show admin link only for admin users
+    if (linkAdmin) {
+        linkAdmin.style.display = (isAuthed && window.currentUser && window.currentUser.role === 'admin') ? 'inline-block' : 'none';
+    }
 
     // Hide entire user profile menu when logged out
     const userProfileMenu = document.getElementById('user-profile-menu');
@@ -1198,3 +1227,443 @@ function computePasswordStrength(value) {
         color: colors[score]
     };
 }
+
+// ==========================================
+// COMPETITION REGISTRATION FUNCTIONS
+// ==========================================
+
+let registrationModalCompetitionId = null;
+
+function showRegisterModal(competitionId) {
+    // Check if user is logged in
+    if (!window.currentUser) {
+        alert('Please sign in to register for competitions');
+        showPage('signin');
+        return;
+    }
+    
+    registrationModalCompetitionId = competitionId;
+    const competition = competitions.find(c => c.id == competitionId);
+    
+    if (!competition) {
+        alert('Competition not found');
+        return;
+    }
+    
+    // Create modal HTML if it doesn't exist
+    let modal = document.getElementById('registerModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'registerModal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <h2 style="margin: 0;">Register for Competition</h2>
+                    <span class="modal-close" onclick="closeRegisterModal()" style="font-size: 2rem; cursor: pointer; color: #64748b;">&times;</span>
+                </div>
+                <div id="registerModalContent"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    
+    // Fill modal content
+    document.getElementById('registerModalContent').innerHTML = `
+        <div>
+            <h3 style="margin-bottom: 1rem;">${escapeHtml(competition.name)}</h3>
+            <p style="color: #64748b; margin-bottom: 1rem;">${escapeHtml(competition.description || '')}</p>
+            
+            <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                <p><strong>Start Date:</strong> ${formatDate(competition.start_date)}</p>
+                <p><strong>End Date:</strong> ${formatDate(competition.end_date)}</p>
+                <p><strong>Difficulty:</strong> ${competition.difficulty_level}</p>
+                ${competition.prize_pool ? `<p><strong>Prize Pool:</strong> ${escapeHtml(competition.prize_pool)}</p>` : ''}
+            </div>
+            
+            <div id="registerAlert"></div>
+            
+            <form id="registerForm" onsubmit="submitRegistration(event)">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Team Name (Optional)</label>
+                    <input type="text" name="team_name" id="teamName" placeholder="Enter team name or leave empty for solo" 
+                           style="width: 100%; padding: 0.75rem; border: 2px solid #e2e8f0; border-radius: 8px;">
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Notes (Optional)</label>
+                    <textarea name="registration_notes" id="regNotes" rows="3" placeholder="Any additional information..."
+                              style="width: 100%; padding: 0.75rem; border: 2px solid #e2e8f0; border-radius: 8px; resize: vertical;"></textarea>
+                </div>
+                
+                <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+                    <p style="margin: 0; font-size: 0.875rem;">
+                        <strong>Note:</strong> After registration, your payment status will be pending. 
+                        Admin will verify your payment before final approval.
+                    </p>
+                </div>
+                
+                <div style="display: flex; gap: 1rem;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">
+                        <i class="fas fa-check"></i> Confirm Registration
+                    </button>
+                    <button type="button" class="btn btn-outline" onclick="closeRegisterModal()" style="flex: 1;">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    modal.style.display = 'flex';
+}
+
+function closeRegisterModal() {
+    const modal = document.getElementById('registerModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    registrationModalCompetitionId = null;
+}
+
+async function submitRegistration(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const teamName = form.team_name.value.trim();
+    const notes = form.registration_notes.value.trim();
+    
+    try {
+        const response = await fetch('/api/register_competition.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                competition_id: registrationModalCompetitionId,
+                team_name: teamName || null,
+                registration_notes: notes || null
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // Show success message
+            document.getElementById('registerAlert').innerHTML = `
+                <div style="background: #dcfce7; color: #166534; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                    <strong>Success!</strong> ${result.message}
+                </div>
+            `;
+            
+            // Close modal after 2 seconds and reload data
+            setTimeout(() => {
+                closeRegisterModal();
+                loadCompetitions();
+                loadDashboardData();
+            }, 2000);
+        } else {
+            // Show error
+            document.getElementById('registerAlert').innerHTML = `
+                <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                    <strong>Error:</strong> ${result.error}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error registering:', error);
+        document.getElementById('registerAlert').innerHTML = `
+            <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                <strong>Error:</strong> Failed to register. Please try again.
+            </div>
+        `;
+    }
+}
+
+// ==========================================
+// HELPER FUNCTIONS
+// ==========================================
+
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ==========================================
+// ADMIN PANEL FUNCTIONS (from admin.js)
+// ==========================================
+
+function switchAdminTab(tab) {
+    // Update tab buttons
+    document.querySelectorAll('.admin-tab').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    // Update tab content
+    document.querySelectorAll('.admin-tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    
+    document.getElementById('admin-' + tab + 'Tab').classList.add('active');
+    
+    // Reload data when switching tabs
+    if (tab === 'payments') {
+        loadAdminPayments();
+    } else if (tab === 'registrations') {
+        loadAdminRegistrations();
+    } else if (tab === 'competitions') {
+        loadAdminCompetitions();
+    }
+}
+
+async function loadAdminCompetitions() {
+    try {
+        const response = await fetch('/api/admin/manage_competitions.php');
+        const competitions = await response.json();
+        
+        const container = document.getElementById('adminCompetitionsList');
+        
+        if (!competitions || competitions.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 2rem;">No competitions yet.</p>';
+            return;
+        }
+        
+        container.innerHTML = competitions.map(comp => `
+            <div class="competition-card">
+                <div class="competition-header">
+                    <div class="competition-title">${escapeHtml(comp.name)}</div>
+                    <span class="status-badge status-${comp.status}">${comp.status.replace('_', ' ')}</span>
+                </div>
+                <p><strong>Category:</strong> ${comp.category}</p>
+                <p><strong>Difficulty:</strong> ${comp.difficulty_level}</p>
+                <p><strong>Start:</strong> ${formatDate(comp.start_date)}</p>
+                <p><strong>End:</strong> ${formatDate(comp.end_date)}</p>
+                <p><strong>Participants:</strong> ${comp.current_participants || 0}${comp.max_participants ? '/' + comp.max_participants : ''}</p>
+                ${comp.prize_pool ? `<p><strong>Prize:</strong> ${escapeHtml(comp.prize_pool)}</p>` : ''}
+                <div class="competition-actions">
+                    <button class="btn btn-sm btn-warning" onclick="editAdminCompetition(${comp.id})">Edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteAdminCompetition(${comp.id})">Delete</button>
+                </div>
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading admin competitions:', error);
+        showAdminAlert('competitionAlert', 'Error loading competitions', 'error');
+    }
+}
+
+async function loadAdminPayments() {
+    try {
+        const response = await fetch('/api/admin/verify_payments.php');
+        const payments = await response.json();
+        
+        const tbody = document.getElementById('paymentsTableBody');
+        
+        if (!payments || payments.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No pending payments</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = payments.map(payment => `
+            <tr>
+                <td>${payment.id}</td>
+                <td>
+                    <strong>${escapeHtml(payment.user_name)}</strong><br>
+                    <small>${escapeHtml(payment.user_email)}</small>
+                </td>
+                <td>${escapeHtml(payment.competition_name)}</td>
+                <td>${payment.team_name ? escapeHtml(payment.team_name) : '-'}</td>
+                <td>
+                    <span class="status-badge status-${payment.payment_status}">
+                        ${payment.payment_status}
+                    </span>
+                </td>
+                <td>${formatDate(payment.registered_at)}</td>
+                <td>
+                    <button class="btn btn-sm btn-success" onclick="verifyAdminPayment(${payment.id}, 'paid')">Approve</button>
+                    <button class="btn btn-sm btn-danger" onclick="verifyAdminPayment(${payment.id}, 'refunded')">Reject</button>
+                </td>
+            </tr>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading payments:', error);
+        showAdminAlert('paymentAlert', 'Error loading payments', 'error');
+    }
+}
+
+async function loadAdminRegistrations() {
+    try {
+        const response = await fetch('/api/admin/get_registrations.php');
+        const registrations = await response.json();
+        
+        const tbody = document.getElementById('registrationsTableBody');
+        
+        if (!registrations || registrations.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No registrations yet</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = registrations.map(reg => `
+            <tr>
+                <td>${reg.id}</td>
+                <td>
+                    <strong>${escapeHtml(reg.user_name)}</strong><br>
+                    <small>@${escapeHtml(reg.username)}</small>
+                </td>
+                <td>${escapeHtml(reg.competition_name)}</td>
+                <td>${reg.team_name ? escapeHtml(reg.team_name) : '-'}</td>
+                <td>
+                    <span class="status-badge status-${reg.registration_status}">
+                        ${reg.registration_status}
+                    </span>
+                </td>
+                <td>
+                    <span class="status-badge status-${reg.payment_status}">
+                        ${reg.payment_status}
+                    </span>
+                </td>
+                <td>${reg.score || 0}</td>
+                <td>${formatDate(reg.registered_at)}</td>
+            </tr>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading registrations:', error);
+    }
+}
+
+async function verifyAdminPayment(registrationId, status) {
+    try {
+        const response = await fetch('/api/admin/verify_payments.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                registration_id: registrationId,
+                payment_status: status
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showAdminAlert('paymentAlert', `Payment ${status === 'paid' ? 'approved' : 'rejected'} successfully!`, 'success');
+            loadAdminPayments();
+            loadAdminRegistrations();
+        } else {
+            showAdminAlert('paymentAlert', result.error || 'Failed to update payment', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Error verifying payment:', error);
+        showAdminAlert('paymentAlert', 'Error verifying payment', 'error');
+    }
+}
+
+function editAdminCompetition(id) {
+    // TODO: Implement edit modal
+    alert('Edit functionality - Competition ID: ' + id);
+}
+
+async function deleteAdminCompetition(id) {
+    if (!confirm('Are you sure you want to delete this competition? This will also delete all registrations.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/admin/manage_competitions.php', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ id })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showAdminAlert('competitionAlert', 'Competition deleted successfully!', 'success');
+            loadAdminCompetitions();
+        } else {
+            showAdminAlert('competitionAlert', result.error || 'Failed to delete competition', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Error deleting competition:', error);
+        showAdminAlert('competitionAlert', 'Error deleting competition', 'error');
+    }
+}
+
+function closeEditCompetitionModal() {
+    document.getElementById('editCompetitionModal').style.display = 'none';
+}
+
+function showAdminAlert(elementId, message, type) {
+    const alertDiv = document.getElementById(elementId);
+    if (!alertDiv) return;
+    
+    alertDiv.innerHTML = `<div class="alert alert-${type}" style="padding: 1rem; border-radius: 8px; margin-bottom: 1rem; background: ${type === 'success' ? '#dcfce7' : '#fee2e2'}; color: ${type === 'success' ? '#166534' : '#991b1b'};">${message}</div>`;
+    setTimeout(() => {
+        alertDiv.innerHTML = '';
+    }, 5000);
+}
+
+// Setup admin form handlers
+document.addEventListener('DOMContentLoaded', function() {
+    const addCompForm = document.getElementById('addCompetitionForm');
+    if (addCompForm && !addCompForm.dataset.initialized) {
+        addCompForm.dataset.initialized = 'true';
+        addCompForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            
+            console.log('Sending competition data:', data);
+            
+            try {
+                const response = await fetch('/api/admin/manage_competitions.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                console.log('API Response:', result);
+                
+                if (response.ok) {
+                    showAdminAlert('competitionAlert', result.message || 'Competition added successfully!', 'success');
+                    e.target.reset();
+                    loadAdminCompetitions();
+                } else {
+                    showAdminAlert('competitionAlert', result.error || 'Failed to add competition', 'error');
+                    console.error('API Error:', result);
+                }
+                
+            } catch (error) {
+                console.error('Error adding competition:', error);
+                showAdminAlert('competitionAlert', 'Network error: ' + error.message, 'error');
+            }
+        });
+    }
+});

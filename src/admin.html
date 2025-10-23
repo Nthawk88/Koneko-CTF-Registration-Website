@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - CTF Registration</title>
+    <link rel="stylesheet" href="assets/css/styles.css">
+    <style>
+        body {
+            background: #f8fafc;
+            color: #1e293b;
+        }
+
+        .admin-container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+            color: #1e293b;
+        }
+
+        .admin-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+        }
+
+        .admin-tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .admin-tab {
+            padding: 1rem 2rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #64748b;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .admin-tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .admin-card {
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+            color: #1e293b;
+        }
+
+        .admin-card h2,
+        .admin-card h3 {
+            color: #1e293b;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #1e293b;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+            color: #1e293b;
+            background: white;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .competitions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .competition-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 1.5rem;
+            transition: all 0.3s;
+            color: #1e293b;
+        }
+
+        .competition-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 8px 12px rgba(0,0,0,0.1);
+        }
+
+        .competition-card p,
+        .competition-card strong {
+            color: #1e293b;
+        }
+
+        .competition-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1rem;
+        }
+
+        .competition-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .status-upcoming { background: #dbeafe; color: #1e40af; }
+        .status-registration_open { background: #dcfce7; color: #166534; }
+        .status-ongoing { background: #fef3c7; color: #92400e; }
+        .status-completed { background: #e5e7eb; color: #374151; }
+
+        .competition-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            color: #1e293b;
+        }
+
+        table th {
+            background: #f8fafc;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: #1e293b;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        table td {
+            padding: 1rem;
+            border-bottom: 1px solid #e2e8f0;
+            color: #1e293b;
+        }
+
+        table td strong,
+        table td small {
+            color: #1e293b;
+        }
+
+        table td small {
+            opacity: 0.7;
+        }
+
+        table tr:hover {
+            background: #f8fafc;
+        }
+
+        .payment-proof {
+            max-width: 150px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            color: #1e293b;
+        }
+
+        .modal-content h2,
+        .modal-content label,
+        .modal-content input,
+        .modal-content textarea,
+        .modal-content select {
+            color: #1e293b;
+        }
+
+        .modal-content input,
+        .modal-content textarea,
+        .modal-content select {
+            background: white;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-close {
+            font-size: 2rem;
+            cursor: pointer;
+            color: #64748b;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .logout-btn {
+            position: absolute;
+            top: 1rem;
+            right: 2rem;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            padding: 0.5rem 1.5rem;
+            border: 2px solid white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .logout-btn:hover {
+            background: white;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container" id="adminPanel" style="display: none;">
+        <div class="admin-header">
+            <button class="logout-btn" onclick="logout()">Logout</button>
+            <h1>Admin Panel</h1>
+            <p>Manage competitions and verify payments</p>
+        </div>
+
+        <div class="admin-tabs">
+            <button class="admin-tab active" onclick="switchTab('competitions')">Competitions</button>
+            <button class="admin-tab" onclick="switchTab('payments')">Payment Verification</button>
+            <button class="admin-tab" onclick="switchTab('registrations')">All Registrations</button>
+        </div>
+
+        <!-- Competitions Tab -->
+        <div id="competitionsTab" class="tab-content active">
+            <div class="admin-card">
+                <h2>Add New Competition</h2>
+                <div id="competitionAlert"></div>
+                <form id="addCompetitionForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Competition Name *</label>
+                            <input type="text" name="name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Category *</label>
+                            <select name="category" required>
+                                <option value="international">International</option>
+                                <option value="national">National</option>
+                                <option value="junior">Junior</option>
+                                <option value="internal">Internal</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description"></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Start Date *</label>
+                            <input type="datetime-local" name="start_date" required>
+                        </div>
+                        <div class="form-group">
+                            <label>End Date *</label>
+                            <input type="datetime-local" name="end_date" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Registration Deadline *</label>
+                            <input type="datetime-local" name="registration_deadline" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Difficulty Level</label>
+                            <select name="difficulty_level">
+                                <option value="beginner">Beginner</option>
+                                <option value="intermediate">Intermediate</option>
+                                <option value="advanced">Advanced</option>
+                                <option value="expert">Expert</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Status</label>
+                            <select name="status">
+                                <option value="upcoming">Upcoming</option>
+                                <option value="registration_open">Registration Open</option>
+                                <option value="registration_closed">Registration Closed</option>
+                                <option value="ongoing">Ongoing</option>
+                                <option value="completed">Completed</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Max Participants</label>
+                            <input type="number" name="max_participants" min="1">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Prize Pool</label>
+                            <input type="text" name="prize_pool" placeholder="e.g. $10,000">
+                        </div>
+                        <div class="form-group">
+                            <label>Contact Person</label>
+                            <input type="text" name="contact_person">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Rules</label>
+                        <textarea name="rules"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Banner URL</label>
+                        <input type="url" name="banner_url" placeholder="https://...">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Add Competition</button>
+                </form>
+            </div>
+
+            <div class="admin-card">
+                <h2>Existing Competitions</h2>
+                <div id="competitionsList" class="competitions-grid"></div>
+            </div>
+        </div>
+
+        <!-- Payments Tab -->
+        <div id="paymentsTab" class="tab-content">
+            <div class="admin-card">
+                <h2>Pending Payment Verifications</h2>
+                <div id="paymentAlert"></div>
+                <div class="table-container">
+                    <table id="paymentsTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>User</th>
+                                <th>Competition</th>
+                                <th>Team Name</th>
+                                <th>Payment Status</th>
+                                <th>Registered At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentsTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Registrations Tab -->
+        <div id="registrationsTab" class="tab-content">
+            <div class="admin-card">
+                <h2>All Registrations</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>User</th>
+                                <th>Competition</th>
+                                <th>Team Name</th>
+                                <th>Status</th>
+                                <th>Payment</th>
+                                <th>Score</th>
+                                <th>Registered At</th>
+                            </tr>
+                        </thead>
+                        <tbody id="registrationsTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Competition Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Competition</h2>
+                <span class="modal-close" onclick="closeEditModal()">&times;</span>
+            </div>
+            <form id="editCompetitionForm">
+                <input type="hidden" name="id" id="editId">
+                <div class="form-group">
+                    <label>Competition Name *</label>
+                    <input type="text" name="name" id="editName" required>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea name="description" id="editDescription"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Status</label>
+                    <select name="status" id="editStatus">
+                        <option value="upcoming">Upcoming</option>
+                        <option value="registration_open">Registration Open</option>
+                        <option value="registration_closed">Registration Closed</option>
+                        <option value="ongoing">Ongoing</option>
+                        <option value="completed">Completed</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Update Competition</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Access Denied -->
+    <div id="accessDenied" style="display: none; text-align: center; padding: 4rem; color: #1e293b;">
+        <h1 style="color: #1e293b;">⛔ Access Denied</h1>
+        <p style="color: #64748b;">You need admin privileges to access this page.</p>
+        <button class="btn btn-primary" onclick="window.location.href='index.html'">Back to Home</button>
+    </div>
+
+    <script src="assets/js/admin.js"></script>
+</body>
+</html>
+
