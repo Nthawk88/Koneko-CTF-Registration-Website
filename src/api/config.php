@@ -1,6 +1,16 @@
 <?php
-define('DATABASE_URL', getenv('DATABASE_URL') ?: 'postgresql://neondb_owner:npg_qkfmW5NpYP7X@ep-tiny-voice-a1a49fzy-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&options=endpoint%3Dep-tiny-voice-a1a49fzy');
 
-ini_set('session.cookie_httponly', 1);
-ini_set('session.use_strict_mode', 1);
-ini_set('session.cookie_secure', 1);
+$databaseUrl = getenv('DATABASE_URL');
+if ($databaseUrl === false || $databaseUrl === '') {
+	throw new RuntimeException('DATABASE_URL environment variable is required.');
+}
+
+define('DATABASE_URL', $databaseUrl);
+
+ini_set('session.cookie_httponly', '1');
+ini_set('session.use_only_cookies', '1');
+ini_set('session.use_strict_mode', '1');
+
+$isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] === '443');
+ini_set('session.cookie_secure', $isSecure ? '1' : '0');
+ini_set('session.cookie_samesite', 'Lax');
