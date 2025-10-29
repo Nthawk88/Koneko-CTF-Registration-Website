@@ -100,14 +100,6 @@
                     
                     <div class="stats-section">
                         <div class="stat-item">
-                            <div class="stat-number">1000+</div>
-                            <div class="stat-label">Active Players</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">50+</div>
-                            <div class="stat-label">Competitions</div>
-                        </div>
-                        <div class="stat-item">
                             <div class="stat-number">24/7</div>
                             <div class="stat-label">Platform Uptime</div>
                         </div>
@@ -294,28 +286,6 @@
                         </div>
                         <div class="welcome-text">
                             <h1>Dashboard</h1>
-                            <p>Welcome back, John! Ready for some challenges?</p>
-                        </div>
-                        <div class="user-profile" id="user-profile-menu">
-                            <div class="profile-avatar">
-                                <i class="fas fa-user"></i>
-                            </div>
-                            <div class="profile-info">
-                                <div class="profile-name">John "Koneko Cat" Hacker</div>
-                                <div class="profile-rank">Rank #42</div>
-                            </div>
-                            <i class="fas fa-chevron-down profile-caret"></i>
-                            <div class="profile-dropdown" id="profile-dropdown">
-                                <a href="#user-profile-menu" class="dropdown-item" data-action="edit-profile">
-                                    <i class="fas fa-user-edit"></i>
-                                    Edit Profile
-                                </a>
-                                <div class="dropdown-separator"></div>
-                                <button class="dropdown-item" id="menu-signout" type="button">
-                                    <i class="fas fa-right-from-bracket"></i>
-                                    Log Out
-                                </button>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -326,38 +296,11 @@
                     <div class="stats-grid">
                         <div class="stat-card">
                             <div class="stat-icon">
-                                <i class="fas fa-star"></i>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-label">Total Points</div>
-                                <div class="stat-value">2,847</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">
-                                <i class="fas fa-trophy"></i>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-label">Global Rank</div>
-                                <div class="stat-value">#42</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">
                                 <i class="fas fa-flag"></i>
                             </div>
                             <div class="stat-content">
-                                <div class="stat-label">Competitions</div>
+                                <div class="stat-label">Joined Competitions</div>
                                 <div class="stat-value">8</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">
-                                <i class="fas fa-target"></i>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-label">Win Rate</div>
-                                <div class="stat-value">38%</div>
                             </div>
                         </div>
                     </div>
@@ -381,30 +324,6 @@
                         </div>
                         
                         <div class="sidebar">
-                            <div class="sidebar-section">
-                                <h3>Quick Stats</h3>
-                                <div class="quick-stats">
-                                    <div class="quick-stat">
-                                        <span class="quick-stat-label">Current Streak</span>
-                                        <span class="quick-stat-value">
-                                            <i class="fas fa-fire"></i>
-                                            7 days
-                                        </span>
-                                    </div>
-                                    <div class="quick-stat">
-                                        <span class="quick-stat-label">Challenges Solved</span>
-                                        <span class="quick-stat-value">127</span>
-                                    </div>
-                                    <div class="quick-stat">
-                                        <span class="quick-stat-label">Average Rank</span>
-                                        <span class="quick-stat-value">#15.2</span>
-                                    </div>
-                                    <div class="quick-stat">
-                                        <span class="quick-stat-label">Member Since</span>
-                                        <span class="quick-stat-value">Jan 15, 2024</span>
-                                    </div>
-                                </div>
-                            </div>
                             
                             <div class="sidebar-section">
                                 <h3>Recent Activity</h3>
@@ -462,14 +381,6 @@
                         <button class="tab-btn active" data-tab="info">
                             <i class="fas fa-user"></i>
                             Profile Info
-                        </button>
-                        <button class="tab-btn" data-tab="security">
-                            <i class="fas fa-lock"></i>
-                            Security
-                        </button>
-                        <button class="tab-btn" data-tab="statistics">
-                            <i class="fas fa-chart-bar"></i>
-                            Statistics
                         </button>
                     </div>
 
@@ -536,92 +447,45 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div id="security-tab" class="tab-pane">
-                            <div class="security-section">
-                                <h2>Security Settings</h2>
-                                <p>Change your password and manage security preferences</p>
-                                
-                                <div class="security-form">
-                                    <div class="form-group">
-                                        <label>Current Password</label>
-                                        <div class="password-input">
-                                            <input type="password" placeholder="Enter current password">
-                                            <button class="password-toggle" type="button">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>New Password</label>
-                                        <div class="password-input">
-                                            <input type="password" placeholder="Enter new password">
-                                            <button class="password-toggle" type="button">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Confirm New Password</label>
-                                        <div class="password-input">
-                                            <input type="password" placeholder="Confirm new password">
-                                            <button class="password-toggle" type="button">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    
-                                    <button class="btn btn-primary">
-                                        <i class="fas fa-key"></i>
-                                        Change Password
-                                    </button>
+                            <div class="profile-form-section">
+                                <div class="section-header">
+                                    <h2>Change Password</h2>
                                 </div>
-                            </div>
-                        </div>
-
-                        <div id="statistics-tab" class="tab-pane">
-                            <div class="statistics-section">
-                                <h2>Your Statistics</h2>
-                                <p>Track your CTF performance and achievements</p>
-                                
-                                <div class="stats-cards">
-                                    <div class="stats-card">
-                                        <div class="stats-icon">
-                                            <i class="fas fa-trophy"></i>
+                                <div class="security-form">
+                                    <form id="change-password-form">
+                                        <div class="form-group">
+                                            <label>Current Password</label>
+                                            <div class="password-input">
+                                                <input type="password" name="currentPassword" placeholder="Enter current password" required>
+                                                <button class="password-toggle" type="button">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div class="stats-content">
-                                            <div class="stats-number">12</div>
-                                            <div class="stats-label">Competitions</div>
+                                        <div class="form-group">
+                                            <label>New Password</label>
+                                            <div class="password-input">
+                                                <input type="password" name="newPassword" placeholder="Enter new password" required>
+                                                <button class="password-toggle" type="button">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="stats-card">
-                                        <div class="stats-icon">
-                                            <i class="fas fa-medal"></i>
+                                        <div class="form-group">
+                                            <label>Confirm New Password</label>
+                                            <div class="password-input">
+                                                <input type="password" name="confirmPassword" placeholder="Confirm new password" required>
+                                                <button class="password-toggle" type="button">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div class="stats-content">
-                                            <div class="stats-number">3</div>
-                                            <div class="stats-label">Wins</div>
-                                        </div>
-                                    </div>
-                                    <div class="stats-card">
-                                        <div class="stats-icon">
-                                            <i class="fas fa-star"></i>
-                                        </div>
-                                        <div class="stats-content">
-                                            <div class="stats-number">2,450</div>
-                                            <div class="stats-label">Points</div>
-                                        </div>
-                                    </div>
-                                    <div class="stats-card">
-                                        <div class="stats-icon">
-                                            <i class="fas fa-crown"></i>
-                                        </div>
-                                        <div class="stats-content">
-                                            <div class="stats-number">#42</div>
-                                            <div class="stats-label">Global Rank</div>
-                                        </div>
-                                    </div>
+                                        <button class="btn btn-primary" type="submit">
+                                            <i class="fas fa-key"></i>
+                                            Update Password
+                                        </button>
+                                    </form>
                                 </div>
                             </div>
                         </div>
@@ -937,21 +801,6 @@
 
                         <!-- Registrations Tab -->
                         <div id="admin-registrationsTab" class="admin-tab-content">
-                            <div class="admin-card">
-                                <h2>All Registrations</h2>
-                                <div class="table-container">
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th>ID</th>
-                                                <th>User</th>
-                                                <th>Competition</th>
-                                                <th>Team Name</th>
-                                                <th>Status</th>
-                                                <th>Payment</th>
-                                                <th>Score</th>
-                                                <th>Registered At</th>
-                                            </tr>
                             <div class="admin-card">
                                 <h2>All Registrations</h2>
                                 <div class="table-container">
