@@ -1,21 +1,36 @@
 const state = {
 	currentPage: 'home',
 	currentUser: null,
+	csrfToken: null,
+	competitions: [],
+	myCompetitions: [],
+	recentActivity: [],
 	admin: {
 		initialized: false,
 		competitions: [],
 		payments: [],
 		registrations: [],
 	},
+	theme: 'dark',
+	competitionFilters: {
+		query: '',
+		status: 'all',
+	},
 };
+
+const THEME_STORAGE_KEY = 'koneko-theme';
 
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
+	initThemeToggle();
+	setupPasswordToggles();
+	setupCompetitionFilters();
 	setupNavigation();
 	wireAuthForms();
 	wireProfileEditor();
 	wireSignOut();
+	setupCompetitionInteractions();
 	setupAdminUI();
 
 	await refreshSession();
@@ -35,6 +50,7 @@ function notify(message, type = 'info') {
 	if (!el) {
 		el = document.createElement('div');
 		el.id = 'toast';
+		el.className = 'toast';
 		el.style.position = 'fixed';
 		el.style.top = '20px';
 		el.style.right = '20px';
@@ -61,12 +77,124 @@ function notify(message, type = 'info') {
 	}, 3200);
 }
 
+function cacheBustUrl(url, version) {
+	if (!url) return null;
+	const separator = url.includes('?') ? '&' : '?';
+	const token = version !== undefined && version !== null ? version : Date.now();
+	return `${url}${separator}_=${token}`;
+}
+
+function getStoredTheme() {
+	try {
+		const stored = localStorage.getItem(THEME_STORAGE_KEY);
+		return stored === 'light' ? 'light' : 'dark';
+	} catch (err) {
+		return 'dark';
+	}
+}
+
+function applyTheme(theme) {
+	state.theme = theme === 'light' ? 'light' : 'dark';
+	const body = document.body;
+	if (body) {
+		body.classList.toggle('theme-light', state.theme === 'light');
+		body.classList.toggle('theme-dark', state.theme !== 'light');
+	}
+	document.documentElement.style.colorScheme = state.theme === 'light' ? 'light' : 'dark';
+	try {
+		localStorage.setItem(THEME_STORAGE_KEY, state.theme);
+	} catch (err) {
+	}
+	updateThemeToggleIcon();
+}
+
+function updateThemeToggleIcon() {
+	const toggle = document.getElementById('theme-toggle');
+	if (!toggle) return;
+	const isLight = state.theme === 'light';
+	toggle.innerHTML = isLight ? '<i class="fas fa-moon"></i>' : '<i class="fas fa-sun"></i>';
+	toggle.setAttribute('aria-pressed', isLight ? 'true' : 'false');
+	toggle.setAttribute('aria-label', isLight ? 'Switch to dark mode' : 'Switch to light mode');
+	toggle.setAttribute('title', isLight ? 'Switch to dark mode' : 'Switch to light mode');
+}
+
+function initThemeToggle() {
+	const initial = getStoredTheme();
+	applyTheme(initial);
+	const toggle = document.getElementById('theme-toggle');
+	if (toggle) {
+		toggle.addEventListener('click', () => {
+			const next = state.theme === 'light' ? 'dark' : 'light';
+			applyTheme(next);
+		});
+	}
+	updateThemeToggleIcon();
+}
+
+function fileToBase64(file) {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => {
+			const result = typeof reader.result === 'string' ? reader.result : '';
+			const base64 = result.split(',')[1];
+			if (!base64) {
+				reject(new Error('Failed to encode image'));
+				return;
+			}
+			resolve({
+				base64,
+				mime: file.type || 'application/octet-stream',
+			});
+		};
+		reader.onerror = () => reject(new Error('Failed to read file'));
+		reader.readAsDataURL(file);
+	});
+}
+
+async function buildCompetitionPayload(form) {
+	const formData = new FormData(form);
+	const payload = {};
+
+	for (const [key, value] of formData.entries()) {
+		if (key === 'banner_file') continue;
+		if (typeof value === 'string') {
+			payload[key] = value.trim();
+		} else {
+			payload[key] = value;
+		}
+	}
+
+	const bannerFile = formData.get('banner_file');
+	const bannerProvided = bannerFile instanceof File && bannerFile.size > 0;
+	const editingExisting = Boolean(form.querySelector('input[name="id"]')?.value);
+
+	if (!bannerProvided) {
+		if (!editingExisting) {
+			throw new Error('Banner image is required.');
+		}
+	} else {
+		const maxSizeBytes = 2 * 1024 * 1024;
+		if (bannerFile.size > maxSizeBytes) {
+			throw new Error('Banner image must be smaller than 2MB.');
+		}
+		const { base64, mime } = await fileToBase64(bannerFile);
+		payload.bannerData = base64;
+		payload.bannerMime = mime;
+	}
+
+	return payload;
+}
+
 async function refreshSession() {
 	try {
 		const data = await apiRequest('get_current_user.php');
 		state.currentUser = data.user;
+		if (data.csrf_token) {
+			state.csrfToken = data.csrf_token;
+		}
 	} catch (err) {
 		state.currentUser = null;
+		state.csrfToken = null;
 	}
 }
 
@@ -75,6 +203,19 @@ function applyUserToUI() {
 	updateDashboardGreeting();
 	updateProfileSummary();
 	populateProfileForm();
+
+	if (state.currentUser) {
+		refreshRecentActivity();
+		refreshMyCompetitions();
+	} else {
+		state.recentActivity = [];
+		renderRecentActivity();
+		state.myCompetitions = [];
+		renderMyCompetitions();
+	}
+
+	renderCompetitionList();
+	refreshCompetitions();
 
 	if (state.currentUser?.role === 'admin') {
 		refreshAdminData();
@@ -108,6 +249,154 @@ function updateAuthVisibility() {
 	if (profileMenu) profileMenu.style.display = authed ? '' : 'none';
 }
 
+async function refreshRecentActivity() {
+	if (!state.currentUser) {
+		state.recentActivity = [];
+		renderRecentActivity();
+		return;
+	}
+
+	try {
+		const { activities } = await apiRequest('recent_activity.php');
+		state.recentActivity = Array.isArray(activities) ? activities : [];
+	} catch (err) {
+		state.recentActivity = [];
+	}
+
+	renderRecentActivity();
+}
+
+function renderRecentActivity() {
+	const container = document.getElementById('activity-feed');
+	if (!container) return;
+
+	if (!state.currentUser) {
+		container.innerHTML = '<p class="empty-state">Sign in to see your activity.</p>';
+		return;
+	}
+
+	if (!state.recentActivity.length) {
+		container.innerHTML = '<p class="empty-state">No recent activity yet.</p>';
+		return;
+	}
+
+	container.innerHTML = state.recentActivity
+		.map((activity) => {
+			const icon = getActivityIcon(activity.activity_type);
+			const description = escapeHtml(activity.description || '');
+			const relativeTime = formatRelativeTime(activity.created_at, activity.created_at_epoch_ms);
+			return `
+				<div class="activity-item">
+					<div class="activity-icon">
+						<i class="${icon}"></i>
+					</div>
+					<div class="activity-content">
+						<div class="activity-text">${description}</div>
+						<div class="activity-time">${escapeHtml(relativeTime)}</div>
+					</div>
+				</div>
+			`;
+		})
+		.join('');
+}
+
+function getActivityIcon(type = '') {
+	const map = {
+		'auth.signin': 'fas fa-sign-in-alt',
+		'auth.signup': 'fas fa-user-plus',
+		'profile.update': 'fas fa-user-edit',
+		'profile.avatar.update': 'fas fa-camera',
+		'profile.password.change': 'fas fa-key',
+		'competition.register': 'fas fa-flag',
+		'admin.competition.create': 'fas fa-plus-circle',
+		'admin.competition.update': 'fas fa-edit',
+		'admin.competition.delete': 'fas fa-trash',
+		'admin.payment.update': 'fas fa-receipt',
+	};
+	return map[type] || 'fas fa-info-circle';
+}
+
+function formatRelativeTime(dateString, epochMs) {
+	let referenceDateMs = null;
+	if (typeof epochMs === 'number' && Number.isFinite(epochMs) && epochMs > 0) {
+		referenceDateMs = epochMs;
+	} else if (dateString) {
+		const parsed = Date.parse(dateString);
+		if (!Number.isNaN(parsed)) {
+			referenceDateMs = parsed;
+		}
+	}
+
+	if (referenceDateMs === null) return '';
+
+	const diffMs = Date.now() - referenceDateMs;
+	if (diffMs <= 0) return 'Just now';
+
+	const totalMinutes = Math.floor(diffMs / 60000);
+	if (totalMinutes <= 0) return 'Just now';
+
+	const minutesInDay = 60 * 24;
+	const days = Math.floor(totalMinutes / minutesInDay);
+	const remainingMinutes = totalMinutes % minutesInDay;
+	const hours = Math.floor(remainingMinutes / 60);
+	const minutes = remainingMinutes % 60;
+
+	if (days >= 1) {
+		if (hours === 0) {
+			return `${days}d ago`;
+		}
+		return `${days}d ${hours}hr ago`;
+	}
+
+	if (hours >= 1) {
+		if (minutes === 0) {
+			return `${hours}hr ago`;
+		}
+		return `${hours}hr ${minutes}min ago`;
+	}
+
+	if (minutes > 0) {
+		return `${minutes}min ago`;
+	}
+
+	return 'Just now';
+}
+
+function formatWibDateTime(dateString) {
+	if (!dateString) return '';
+	const date = new Date(dateString);
+	if (Number.isNaN(date.getTime())) return '';
+
+	const timeFormatter = new Intl.DateTimeFormat('id-ID', {
+		timeZone: 'Asia/Jakarta',
+		hour: '2-digit',
+		minute: '2-digit',
+		hour12: false,
+	});
+	const dateFormatter = new Intl.DateTimeFormat('id-ID', {
+		timeZone: 'Asia/Jakarta',
+		year: 'numeric',
+		month: 'short',
+		day: '2-digit',
+	});
+	const dateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+		timeZone: 'Asia/Jakarta',
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+	});
+
+	const todayKey = dateKeyFormatter.format(new Date());
+	const targetKey = dateKeyFormatter.format(date);
+	const timePart = timeFormatter.format(date);
+
+	if (todayKey === targetKey) {
+		return `${timePart} WIB`;
+	}
+
+	return `${dateFormatter.format(date)}, ${timePart} WIB`;
+}
+
 function updateDashboardGreeting() {
 	const welcome = document.querySelector('#dashboard .welcome-text p');
 	if (!welcome) return;
@@ -126,14 +415,17 @@ function updateProfileSummary() {
 		nameEl.textContent = state.currentUser?.fullName || state.currentUser?.username || 'User';
 	}
 
-	const avatar = document.querySelector('.profile-avatar');
+	const avatar = document.querySelector('.avatar-preview');
 	if (avatar) {
 		const img = avatar.querySelector('img');
-		if (state.currentUser?.avatarUrl) {
+		const avatarUrl = state.currentUser?.avatarUrl
+			? cacheBustUrl(state.currentUser.avatarUrl, state.currentUser.avatarVersion)
+			: null;
+		if (avatarUrl) {
 			if (img) {
-				img.src = `${state.currentUser.avatarUrl}?t=${Date.now()}`;
+				img.src = avatarUrl;
 			} else {
-				avatar.innerHTML = `<img src="${state.currentUser.avatarUrl}?t=${Date.now()}" alt="Avatar">`;
+				avatar.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="Avatar">`;
 			}
 		} else {
 			avatar.innerHTML = '<i class="fas fa-user"></i>';
@@ -233,6 +525,318 @@ function setupNavigation() {
 	}
 }
 
+function setupCompetitionInteractions() {
+	const list = document.getElementById('competitions-list');
+	if (list) {
+		list.addEventListener('click', handleCompetitionListClick);
+	}
+}
+
+async function refreshCompetitions() {
+	try {
+		const { competitions } = await apiRequest('competitions.php');
+		state.competitions = Array.isArray(competitions) ? competitions : [];
+	} catch (err) {
+		state.competitions = [];
+	}
+	renderCompetitionList();
+}
+
+function renderCompetitionList() {
+	const container = document.getElementById('competitions-list');
+	if (!container) return;
+
+	const { query = '', status = 'all' } = state.competitionFilters || {};
+	const normalizedQuery = query.trim().toLowerCase();
+
+	let competitions = Array.isArray(state.competitions) ? [...state.competitions] : [];
+
+	if (normalizedQuery) {
+		competitions = competitions.filter((comp) => {
+			const haystack = [
+				comp.name,
+				comp.category,
+				comp.difficulty_level,
+				comp.status,
+			]
+				.filter(Boolean)
+				.join(' ')
+				.toLowerCase();
+			return haystack.includes(normalizedQuery);
+		});
+	}
+
+	if (status !== 'all') {
+		competitions = competitions.filter((comp) => {
+			const compStatus = String(comp.status || '').toLowerCase();
+			switch (status) {
+				case 'upcoming':
+					return compStatus === 'registration_open';
+				case 'ongoing':
+					return compStatus === 'ongoing';
+				case 'ended':
+					return compStatus === 'completed';
+				default:
+					return true;
+			}
+		});
+	}
+
+	if (!competitions.length) {
+		container.innerHTML = '<p class="empty-state">No competitions match your filters yet.</p>';
+		return;
+	}
+
+	container.innerHTML = competitions
+		.map((comp) => {
+			const status = String(comp.status || 'upcoming');
+			const statusLabel = status.replace(/_/g, ' ');
+			const registered = Boolean(comp.is_registered);
+			const currentCountRaw = Number(comp.current_participants ?? 0);
+			const currentCount = Number.isNaN(currentCountRaw) ? 0 : currentCountRaw;
+			const maxCount = comp.max_participants === null || comp.max_participants === undefined ? null : Number(comp.max_participants);
+			const hasCapacityLimit = typeof maxCount === 'number' && !Number.isNaN(maxCount) && maxCount > 0;
+			const capacityFull = hasCapacityLimit && currentCount >= maxCount;
+			const registrationOpen = status === 'registration_open';
+			const canRegister = Boolean(state.currentUser && !registered && registrationOpen && !capacityFull);
+			const participants = currentCount;
+			const maxDisplay = hasCapacityLimit ? `/${maxCount}` : '';
+			const bannerSrc = cacheBustUrl(comp.bannerUrl, comp.bannerVersion);
+
+			let actionHtml = '';
+			if (canRegister) {
+				actionHtml = `
+					<button class="btn btn-primary btn-sm" data-action="register" data-id="${comp.id}">
+						<i class="fas fa-flag"></i>
+						Register
+					</button>
+				`;
+			} else if (registered) {
+				actionHtml = '<span class="status-badge status-registration_open">Registered</span>';
+			} else if (capacityFull) {
+				actionHtml = '<span class="status-badge status-registration_closed">Full</span>';
+			} else if (!state.currentUser) {
+				actionHtml = '<span class="status-badge status-upcoming">Sign in to register</span>';
+			} else {
+				actionHtml = `<span class="status-badge status-${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>`;
+			}
+
+			return `
+				<div class="competition-card">
+					<div class="competition-header">
+						<div class="competition-title">${escapeHtml(comp.name || 'Untitled Competition')}</div>
+						<span class="status-badge status-${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
+					</div>
+					${bannerSrc ? `<div class="competition-banner"><img src="${escapeHtml(bannerSrc)}" alt="Banner"></div>` : ''}
+					<p><strong>Category:</strong> ${escapeHtml(comp.category || 'Unknown')}</p>
+					<p><strong>Difficulty:</strong> ${escapeHtml(comp.difficulty_level || 'Unknown')}</p>
+					<p><strong>Start:</strong> ${escapeHtml(formatDate(comp.start_date))}</p>
+					<p><strong>End:</strong> ${escapeHtml(formatDate(comp.end_date))}</p>
+					<p><strong>Participants:</strong> ${participants}${maxDisplay}</p>
+					${comp.prize_pool ? `<p><strong>Prize:</strong> ${escapeHtml(comp.prize_pool)}</p>` : ''}
+					<div class="competition-actions">
+						${actionHtml}
+					</div>
+				</div>
+			`;
+		})
+		.join('');
+}
+
+async function refreshMyCompetitions() {
+	if (!state.currentUser) {
+		state.myCompetitions = [];
+		renderMyCompetitions();
+		updateJoinedCompetitionsCount();
+		return;
+	}
+
+	try {
+		const { registrations } = await apiRequest('my_competitions.php');
+		state.myCompetitions = Array.isArray(registrations) ? registrations : [];
+	} catch (err) {
+		state.myCompetitions = [];
+	}
+	renderMyCompetitions();
+	updateJoinedCompetitionsCount();
+}
+
+function renderMyCompetitions() {
+	const container = document.getElementById('dashboard-competitions');
+	const ongoingContainer = document.getElementById('dashboard-ongoing');
+	if (!container) return;
+
+	if (!state.currentUser) {
+		container.innerHTML = '<p class="empty-state">Sign in to track your registered competitions.</p>';
+		if (ongoingContainer) ongoingContainer.innerHTML = '';
+		return;
+	}
+
+	if (!state.myCompetitions.length) {
+		container.innerHTML = '<p class="empty-state">You have not joined any competitions yet.</p>';
+		if (ongoingContainer) ongoingContainer.innerHTML = '<p class="empty-state">No ongoing competitions right now.</p>';
+		return;
+	}
+
+	container.innerHTML = state.myCompetitions
+		.map((registration) => {
+			const compStatus = String(registration.competition_status || 'upcoming');
+			const compStatusLabel = compStatus.replace(/_/g, ' ');
+			const regStatus = String(registration.registration_status || 'pending');
+			const regStatusLabel = regStatus.replace(/_/g, ' ');
+			const bannerSrc = cacheBustUrl(registration.bannerUrl, registration.bannerVersion);
+			return `
+				<div class="competition-card small">
+					<div class="competition-header">
+						<div class="competition-title">${escapeHtml(registration.name || 'Competition')}</div>
+						<span class="status-badge status-${escapeHtml(compStatus)}">${escapeHtml(compStatusLabel)}</span>
+					</div>
+					${bannerSrc ? `<div class="competition-banner"><img src="${escapeHtml(bannerSrc)}" alt="Banner"></div>` : ''}
+					<p><strong>Registration Status:</strong> ${escapeHtml(regStatusLabel)}</p>
+					<p><strong>Team:</strong> ${registration.team_name ? escapeHtml(registration.team_name) : '-'}</p>
+					<p><strong>Starts:</strong> ${escapeHtml(formatDate(registration.start_date))}</p>
+					<p><strong>Registered:</strong> ${escapeHtml(formatDate(registration.registered_at))}</p>
+				</div>
+			`;
+		})
+		.join('');
+
+	if (ongoingContainer) {
+		const ongoing = state.myCompetitions.filter(
+			(entry) => String(entry.competition_status || '').toLowerCase() === 'ongoing'
+		);
+
+		if (!ongoing.length) {
+			ongoingContainer.innerHTML = '<p class="empty-state">No ongoing competitions right now.</p>';
+		} else {
+			ongoingContainer.innerHTML = ongoing
+				.map((entry) => {
+					const bannerSrc = cacheBustUrl(entry.bannerUrl, entry.bannerVersion);
+					return `
+						<div class="competition-card small">
+							${bannerSrc ? `<div class="competition-banner"><img src="${escapeHtml(bannerSrc)}" alt="Banner"></div>` : ''}
+							<div class="competition-title">${escapeHtml(entry.name || 'Competition')}</div>
+							<p><strong>Ends:</strong> ${escapeHtml(formatDate(entry.end_date))}</p>
+							<p><strong>Your Team:</strong> ${entry.team_name ? escapeHtml(entry.team_name) : '-'}</p>
+						</div>
+					`;
+				})
+				.join('');
+		}
+	}
+}
+
+function updateJoinedCompetitionsCount() {
+	const statValue = document.querySelector('.stats-grid .stat-card .stat-value');
+	if (!statValue) return;
+	const count = state.currentUser ? state.myCompetitions.length : 0;
+	statValue.textContent = String(count);
+}
+
+function handleCompetitionListClick(event) {
+	const button = event.target.closest('button[data-action]');
+	if (!button) return;
+
+	const competitionId = Number.parseInt(button.dataset.id, 10);
+	if (!competitionId) return;
+
+	if (button.dataset.action === 'register') {
+		registerForCompetition(competitionId, button);
+	}
+}
+
+async function registerForCompetition(competitionId, buttonEl) {
+	if (!state.currentUser) {
+		notify('Please sign in to register for competitions', 'error');
+		showCompetitionAlert('You must sign in to register for competitions.', 'error');
+		showPage('signin');
+		return;
+	}
+
+	const competition = state.competitions.find((comp) => Number(comp.id) === Number(competitionId));
+	if (competition) {
+		const max = Number(competition.max_participants ?? 0);
+		const current = Number(competition.current_participants ?? 0);
+		if (Number.isFinite(max) && max > 0 && current >= max) {
+			const message = 'Competition has reached the maximum number of participants.';
+			notify(message, 'error');
+			showCompetitionAlert(message, 'error');
+			return;
+		}
+	}
+
+	const button = buttonEl || document.querySelector(`button[data-action="register"][data-id="${competitionId}"]`);
+
+	if (modal && form && compIdInput) {
+		compIdInput.value = competitionId;
+		form.reset();
+		
+		const errorDiv = document.getElementById('registrationError');
+		if (errorDiv) errorDiv.style.display = 'none';
+
+		modal.classList.add('active');
+		
+		const teamNameInput = document.getElementById('regTeamName');
+		if (teamNameInput) setTimeout(() => teamNameInput.focus(), 100);
+
+		const closeModal = () => {
+			modal.classList.remove('active');
+			if (button) button.disabled = false;
+		};
+
+		if (closeBtn) {
+			closeBtn.onclick = closeModal;
+		}
+		
+		modal.onclick = (event) => {
+			if (event.target === modal) {
+				closeModal();
+			}
+		};
+
+		form.onsubmit = async (e) => {
+			e.preventDefault();
+			const teamName = document.getElementById('regTeamName').value.trim();
+			const notes = document.getElementById('regNotes').value.trim();
+			
+			if (errorDiv) errorDiv.style.display = 'none';
+
+			try {
+				if (button) button.disabled = true;
+				const submitBtn = form.querySelector('button[type="submit"]');
+				if (submitBtn) submitBtn.disabled = true;
+
+				const response = await apiRequest('register_competition.php', {
+					method: 'POST',
+					body: { 
+						competition_id: competitionId,
+						team_name: teamName,
+						registration_notes: notes
+					},
+				});
+				
+				closeModal();
+				const successMessage = response.message || 'Successfully registered for competition';
+				notify(successMessage, 'success');
+				showCompetitionAlert(successMessage, 'success');
+				await Promise.allSettled([refreshCompetitions(), refreshMyCompetitions(), refreshRecentActivity()]);
+			} catch (err) {
+				if (errorDiv) {
+					errorDiv.textContent = err.message;
+					errorDiv.style.display = 'block';
+				} else {
+					notify(err.message, 'error');
+					showCompetitionAlert(err.message, 'error');
+				}
+			} finally {
+				if (button) button.disabled = false;
+				const submitBtn = form.querySelector('button[type="submit"]');
+				if (submitBtn) submitBtn.disabled = false;
+			}
+		};
+	}
+}
+
 function showPage(pageId) {
 	const pages = document.querySelectorAll('.page');
 	pages.forEach((page) => page.classList.remove('active'));
@@ -286,8 +890,8 @@ function wireAuthForms() {
 	if (signinForm) {
 		signinForm.addEventListener('submit', async (event) => {
 			event.preventDefault();
-			const identifier = signinForm.querySelector('input[type="text"]')?.value.trim() || '';
-			const password = signinForm.querySelector('input[type="password"]')?.value || '';
+			const identifier = signinForm.querySelector('input[name="identifier"]')?.value.trim() || '';
+			const password = signinForm.querySelector('input[name="password"]')?.value || '';
 
 			if (!identifier || !password) {
 				notify('Email/username and password are required', 'error');
@@ -300,6 +904,9 @@ function wireAuthForms() {
 					body: { identifier, password },
 				});
 				state.currentUser = data.user;
+				if (data.csrf_token) {
+					state.csrfToken = data.csrf_token;
+				}
 				applyUserToUI();
 				notify('Signed in successfully', 'success');
 				showPage('dashboard');
@@ -314,13 +921,12 @@ function wireAuthForms() {
 	if (signupForm) {
 		signupForm.addEventListener('submit', async (event) => {
 			event.preventDefault();
-			const inputs = signupForm.querySelectorAll('input');
 			const payload = {
-				fullName: inputs[0]?.value.trim() || '',
-				email: inputs[1]?.value.trim() || '',
-				username: inputs[2]?.value.trim() || '',
-				password: inputs[3]?.value || '',
-				confirmPassword: inputs[4]?.value || '',
+				fullName: signupForm.querySelector('input[name="fullName"]')?.value.trim() || '',
+				email: signupForm.querySelector('input[name="email"]')?.value.trim() || '',
+				username: signupForm.querySelector('input[name="username"]')?.value.trim() || '',
+				password: signupForm.querySelector('input[name="password"]')?.value || '',
+				confirmPassword: signupForm.querySelector('input[name="confirmPassword"]')?.value || '',
 			};
 
 			if (payload.password !== payload.confirmPassword) {
@@ -395,6 +1001,14 @@ function wireProfileEditor() {
 			if (!fileInput.files?.length) return;
 			await uploadAvatar(fileInput.files[0]);
 			fileInput.value = '';
+		});
+	}
+
+	const passwordForm = document.getElementById('change-password-form');
+	if (passwordForm) {
+		passwordForm.addEventListener('submit', async (event) => {
+			event.preventDefault();
+			await submitPasswordChange(passwordForm);
 		});
 	}
 }
@@ -483,23 +1097,81 @@ function setActiveAdminTab(tabKey) {
 	});
 }
 
+function validateCompetitionSchedule(data, _alertId, requireAll = false) {
+	const showError = (message) => showCompetitionToast(message, 'error');
+	const parse = (value) => (value ? new Date(value) : null);
+	const startDate = parse(data.start_date);
+	const endDate = parse(data.end_date);
+	const registrationDeadline = parse(data.registration_deadline);
+
+	const allProvided = startDate && endDate && registrationDeadline;
+	if (requireAll && !allProvided) {
+		showError('Please provide start date, end date, and registration deadline.');
+		return false;
+	}
+
+	if (!allProvided) {
+		return true;
+	}
+
+	const startTime = startDate.getTime();
+	const endTime = endDate.getTime();
+	const deadlineTime = registrationDeadline.getTime();
+
+	if ([startTime, endTime, deadlineTime].some(Number.isNaN)) {
+		showError('Please provide valid date and time values.');
+		return false;
+	}
+
+	if (startTime >= endTime) {
+		showError('End date must be after the start date.');
+		return false;
+	}
+
+	if (deadlineTime > startTime) {
+		showError('Registration deadline must be before the start date.');
+		return false;
+	}
+
+	if (deadlineTime > endTime) {
+		showError('Registration deadline must be before the end date.');
+		return false;
+	}
+
+	return true;
+}
+
 async function handleAdminCompetitionCreate(event) {
 	event.preventDefault();
 	const form = event.currentTarget;
 	const submitBtn = form.querySelector('button[type="submit"]');
-	const data = Object.fromEntries(new FormData(form).entries());
+	let payload;
+
+	try {
+		payload = await buildCompetitionPayload(form);
+	} catch (err) {
+		showCompetitionToast(err.message || 'Failed to process banner image.', 'error');
+		return;
+	}
+
+	if (!validateCompetitionSchedule(payload, 'competitionAlert', true)) {
+		return;
+	}
 
 	try {
 		if (submitBtn) submitBtn.disabled = true;
 		const response = await apiRequest('admin/manage_competitions.php', {
 			method: 'POST',
-			body: data,
+			body: payload,
 		});
-		showAdminAlert('competitionAlert', response.message || 'Competition added successfully!', 'success');
+		showCompetitionToast(response.message || 'Competition added successfully!', 'success');
 		form.reset();
+		const fileInput = form.querySelector('input[name="banner_file"]');
+		if (fileInput) fileInput.value = '';
 		await fetchAdminCompetitions();
+		await refreshRecentActivity();
 	} catch (err) {
-		showAdminAlert('competitionAlert', err.message, 'error');
+		showCompetitionToast(err.message, 'error');
 	} finally {
 		if (submitBtn) submitBtn.disabled = false;
 	}
@@ -509,10 +1181,21 @@ async function handleAdminCompetitionUpdate(event) {
 	event.preventDefault();
 	const form = event.currentTarget;
 	const submitBtn = form.querySelector('button[type="submit"]');
-	const data = Object.fromEntries(new FormData(form).entries());
+	let payload;
 
-	if (!data.id) {
-		showAdminAlert('competitionAlert', 'Missing competition identifier', 'error');
+	try {
+		payload = await buildCompetitionPayload(form);
+	} catch (err) {
+		showCompetitionToast(err.message || 'Failed to process banner image.', 'error');
+		return;
+	}
+
+	if (!payload.id) {
+		showCompetitionToast('Missing competition identifier', 'error');
+		return;
+	}
+
+	if (!validateCompetitionSchedule(payload, 'competitionAlert')) {
 		return;
 	}
 
@@ -520,13 +1203,16 @@ async function handleAdminCompetitionUpdate(event) {
 		if (submitBtn) submitBtn.disabled = true;
 		await apiRequest('admin/manage_competitions.php', {
 			method: 'PUT',
-			body: data,
+			body: payload,
 		});
-		showAdminAlert('competitionAlert', 'Competition updated successfully!', 'success');
+		showCompetitionToast('Competition updated successfully!', 'success');
+		const fileInput = form.querySelector('input[name="banner_file"]');
+		if (fileInput) fileInput.value = '';
 		closeEditCompetitionModal();
 		await fetchAdminCompetitions();
+		await refreshRecentActivity();
 	} catch (err) {
-		showAdminAlert('competitionAlert', err.message, 'error');
+		showCompetitionToast(err.message, 'error');
 	} finally {
 		if (submitBtn) submitBtn.disabled = false;
 	}
@@ -557,10 +1243,49 @@ function openEditCompetitionModal(id) {
 	const form = document.getElementById('editCompetitionForm');
 	if (!form) return;
 
-	form.querySelector('input[name="id"]').value = competition.id;
-	form.querySelector('input[name="name"]').value = competition.name || '';
-	form.querySelector('textarea[name="description"]').value = competition.description || '';
-	form.querySelector('select[name="status"]').value = competition.status || 'upcoming';
+	const setValue = (selector, value) => {
+		const input = form.querySelector(selector);
+		if (!input) return;
+		input.value = value ?? '';
+	};
+
+	setValue('input[name="id"]', competition.id);
+	setValue('input[name="name"]', competition.name || '');
+	setValue('textarea[name="description"]', competition.description || '');
+	setValue('input[name="start_date"]', formatDateTimeLocal(competition.start_date));
+	setValue('input[name="end_date"]', formatDateTimeLocal(competition.end_date));
+	setValue('input[name="registration_deadline"]', formatDateTimeLocal(competition.registration_deadline));
+	setValue('input[name="max_participants"]', competition.max_participants ?? '');
+	setValue('input[name="prize_pool"]', competition.prize_pool || '');
+	setValue('input[name="contact_person"]', competition.contact_person || '');
+
+	const difficultySelect = form.querySelector('select[name="difficulty_level"]');
+	if (difficultySelect) {
+		difficultySelect.value = competition.difficulty_level || 'beginner';
+	}
+
+	const categorySelect = form.querySelector('select[name="category"]');
+	if (categorySelect) {
+		categorySelect.value = competition.category || 'international';
+	}
+
+	const rulesField = form.querySelector('textarea[name="rules"]');
+	if (rulesField) {
+		rulesField.value = competition.rules || '';
+	}
+
+	const fileInput = form.querySelector('input[name="banner_file"]');
+	if (fileInput) {
+		fileInput.value = '';
+	}
+
+	const preview = document.getElementById('editBannerPreview');
+	if (preview) {
+		const bannerSrc = cacheBustUrl(competition.bannerUrl, competition.bannerVersion);
+		preview.innerHTML = bannerSrc
+			? `<img src="${escapeHtml(bannerSrc)}" alt="Current banner">`
+			: '<p class="empty-state">No banner uploaded yet.</p>';
+	}
 
 	const modal = document.getElementById('editCompetitionModal');
 	if (modal) {
@@ -583,10 +1308,11 @@ async function deleteAdminCompetition(id) {
 			method: 'DELETE',
 			body: { id },
 		});
-		showAdminAlert('competitionAlert', 'Competition deleted successfully!', 'success');
+		showCompetitionToast('Competition deleted successfully!', 'success');
 		await fetchAdminCompetitions();
+		await refreshRecentActivity();
 	} catch (err) {
-		showAdminAlert('competitionAlert', err.message, 'error');
+		showCompetitionToast(err.message, 'error');
 	}
 }
 
@@ -622,10 +1348,10 @@ async function fetchAdminCompetitions() {
 		const competitions = await apiRequest('admin/manage_competitions.php');
 		state.admin.competitions = Array.isArray(competitions) ? competitions : [];
 		renderAdminCompetitions();
-            } catch (err) {
+	} catch (err) {
 		state.admin.competitions = [];
 		renderAdminCompetitions();
-		showAdminAlert('competitionAlert', err.message, 'error');
+		showCompetitionToast(err.message, 'error');
 	}
 }
 
@@ -670,12 +1396,14 @@ function renderAdminCompetitions() {
 			const statusLabel = String(comp.status || 'upcoming').replace(/_/g, ' ');
 			const participants = comp.current_participants || 0;
 			const maxParticipants = comp.max_participants ? `/${comp.max_participants}` : '';
+			const bannerSrc = cacheBustUrl(comp.bannerUrl, comp.bannerVersion);
 			return `
 				<div class="competition-card">
 					<div class="competition-header">
 						<div class="competition-title">${escapeHtml(comp.name || 'Untitled Competition')}</div>
 						<span class="status-badge status-${escapeHtml(comp.status || 'upcoming')}">${escapeHtml(statusLabel)}</span>
 					</div>
+					${bannerSrc ? `<div class="competition-banner"><img src="${escapeHtml(bannerSrc)}" alt="Banner"></div>` : ''}
 					<p><strong>Category:</strong> ${escapeHtml(comp.category || 'N/A')}</p>
 					<p><strong>Difficulty:</strong> ${escapeHtml(comp.difficulty_level || 'N/A')}</p>
 					<p><strong>Start:</strong> ${escapeHtml(formatDate(comp.start_date))}</p>
@@ -774,9 +1502,41 @@ async function verifyAdminPayment(registrationId, status) {
 		const successMessage = status === 'paid' ? 'Payment approved successfully!' : 'Payment rejected successfully!';
 		showAdminAlert('paymentAlert', successMessage, 'success');
 		await Promise.allSettled([fetchAdminPayments(), fetchAdminRegistrations()]);
+		await refreshRecentActivity();
 	} catch (err) {
 		showAdminAlert('paymentAlert', err.message, 'error');
 	}
+}
+
+function showCompetitionAlert(message, type = 'info') {
+	let stack = document.getElementById('competitionToastContainer');
+	if (!stack) {
+		stack = document.createElement('div');
+		stack.id = 'competitionToastContainer';
+		document.body.appendChild(stack);
+	}
+
+	const wrapper = document.createElement('div');
+	wrapper.className = `competition-toast alert-${escapeHtml(type)}`;
+
+	const icon = document.createElement('span');
+	icon.className = 'competition-toast-icon';
+	icon.innerHTML = type === 'success' ? '✅' : type === 'error' || type === 'danger' ? '⚠️' : 'ℹ️';
+
+	const text = document.createElement('span');
+	text.className = 'competition-toast-message';
+	text.textContent = message;
+
+	wrapper.appendChild(icon);
+	wrapper.appendChild(text);
+	stack.appendChild(wrapper);
+
+	setTimeout(() => {
+		wrapper.classList.add('fade-out');
+		setTimeout(() => {
+			wrapper.remove();
+		}, 300);
+	}, 2800);
 }
 
 function showAdminAlert(elementId, message, type = 'info') {
@@ -794,13 +1554,35 @@ function formatDate(dateString) {
 	if (!dateString) return 'N/A';
 	const date = new Date(dateString);
 	if (Number.isNaN(date.getTime())) return dateString;
-	return date.toLocaleDateString('en-US', {
+	
+	return new Intl.DateTimeFormat('en-US', {
+		timeZone: 'Asia/Jakarta',
 		year: 'numeric',
 		month: 'short',
 		day: 'numeric',
 		hour: '2-digit',
 		minute: '2-digit',
-	});
+		hour12: false,
+		timeZoneName: 'short'
+	}).format(date);
+}
+
+function formatDateTimeLocal(dateString) {
+	if (!dateString) return '';
+	const date = new Date(dateString);
+	if (Number.isNaN(date.getTime())) return '';
+	
+	const options = { 
+		timeZone: 'Asia/Jakarta',
+		year: 'numeric', month: '2-digit', day: '2-digit',
+		hour: '2-digit', minute: '2-digit', second: '2-digit',
+		hour12: false
+	};
+	
+	const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(date);
+	const part = (type) => parts.find(p => p.type === type).value;
+	
+	return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
 }
 
 function escapeHtml(value) {
@@ -839,6 +1621,49 @@ async function submitProfileUpdate() {
 	}
 }
 
+async function submitPasswordChange(form) {
+	if (!state.currentUser) {
+		notify('Please sign in to update your password', 'error');
+		return;
+	}
+
+	const currentPassword = form.querySelector('input[name="currentPassword"]')?.value || '';
+	const newPassword = form.querySelector('input[name="newPassword"]')?.value || '';
+	const confirmPassword = form.querySelector('input[name="confirmPassword"]')?.value || '';
+
+	if (!currentPassword || !newPassword || !confirmPassword) {
+		notify('Please fill in all password fields', 'error');
+		return;
+	}
+
+	if (newPassword !== confirmPassword) {
+		notify('New passwords do not match', 'error');
+		return;
+	}
+
+	const submitBtn = form.querySelector('button[type="submit"]');
+
+	try {
+		if (submitBtn) submitBtn.disabled = true;
+		const data = await apiRequest('update_profile.php', {
+			method: 'POST',
+			body: {
+				currentPassword,
+				newPassword,
+				confirmPassword,
+			},
+		});
+		form.reset();
+		state.currentUser = data.user;
+		applyUserToUI();
+		notify('Password updated successfully', 'success');
+	} catch (err) {
+		notify(err.message, 'error');
+	} finally {
+		if (submitBtn) submitBtn.disabled = false;
+	}
+}
+
 async function uploadAvatar(file) {
 	const formData = new FormData();
 	formData.append('avatar', file);
@@ -865,9 +1690,11 @@ async function performSignOut() {
 	}
 
 	state.currentUser = null;
+	state.csrfToken = null;
 	state.admin.competitions = [];
 	state.admin.payments = [];
 	state.admin.registrations = [];
+	state.recentActivity = [];
 	applyUserToUI();
 	notify('Signed out', 'success');
 	showPage('signin');
@@ -877,19 +1704,25 @@ async function performSignOut() {
 async function apiRequest(path, options = {}) {
 	const opts = { credentials: 'include', ...options };
 
+	const headers = opts.headers || {};
 	if (opts.body && opts.json !== false) {
-		opts.headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+		headers['Content-Type'] = 'application/json';
 		opts.body = JSON.stringify(opts.body);
 	} else if (opts.json === false) {
 		delete opts.json;
 	}
+
+	if (state.csrfToken) {
+		headers['X-CSRF-Token'] = state.csrfToken;
+	}
+	
+	opts.headers = headers;
 
 	const response = await fetch(`api/${path}`, opts);
 	let data = {};
 	try {
 		data = await response.json();
 	} catch (err) {
-		// ignore parse errors; handled below
 	}
 
 	if (!response.ok) {
@@ -918,3 +1751,59 @@ function wireSignOutMenu() {
 }
 
 wireSignOutMenu();
+
+function showCompetitionToast(message, type = 'info') {
+	const map = {
+		success: 'success',
+		error: 'error',
+		danger: 'error',
+		info: 'info',
+		warning: 'error',
+	};
+	notify(message, map[type] || 'info');
+}
+
+function setupPasswordToggles() {
+	const toggles = document.querySelectorAll('.password-toggle');
+	if (!toggles.length) return;
+
+	toggles.forEach((toggle) => {
+		toggle.addEventListener('click', () => {
+			const input = toggle.closest('.password-input')?.querySelector('input[type="password"], input[type="text"]');
+			if (!input) return;
+			const isHidden = input.type === 'password';
+			input.type = isHidden ? 'text' : 'password';
+			toggle.innerHTML = isHidden ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+			toggle.setAttribute('aria-pressed', String(isHidden));
+		});
+	});
+}
+
+function setupCompetitionFilters() {
+	const searchInput = document.getElementById('search-input');
+	if (searchInput) {
+		searchInput.value = state.competitionFilters.query;
+		searchInput.addEventListener('input', () => {
+			state.competitionFilters.query = searchInput.value.trim().toLowerCase();
+			renderCompetitionList();
+		});
+	}
+
+	const filterButtons = document.querySelectorAll('.filter-btn');
+	if (filterButtons.length) {
+		filterButtons.forEach((button) => {
+			const filter = button.dataset.filter || 'all';
+			if (filter === state.competitionFilters.status) {
+				button.classList.add('active');
+			} else {
+				button.classList.remove('active');
+			}
+			button.addEventListener('click', () => {
+				filterButtons.forEach((btn) => btn.classList.remove('active'));
+				button.classList.add('active');
+				state.competitionFilters.status = filter;
+				renderCompetitionList();
+			});
+		});
+	}
+}

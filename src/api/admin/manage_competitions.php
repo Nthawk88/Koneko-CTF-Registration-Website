@@ -2,216 +2,452 @@
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../utils.php';
 
-header('Content-Type: application/json');
-session_start();
+$admin = require_authenticated_user(true);
+$pdo = get_pdo();
+ensure_required_tables($pdo);
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-// Enable error reporting for debugging
-error_reporting(E_ALL);
-ini_set('display_errors', 0); // Don't display errors, log them instead
+function read_payload(): array {
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    if (stripos((string) $contentType, 'application/json') !== false) {
+        return require_json_input();
+    }
 
-// Check if user is logged in and is admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    http_response_code(403);
-    echo json_encode(['error' => 'Access denied. Admin privileges required.']);
-    exit;
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        return $_GET;
+    }
+
+    if (!empty($_POST)) {
+        return $_POST;
+    }
+
+    return require_json_input();
 }
 
-$method = $_SERVER['REQUEST_METHOD'];
-$conn = getDBConnection();
+function normalize_datetime(?string $value, string $field, bool $required = false): ?string {
+    $value = sanitize_string($value ?? '');
+    if ($value === '') {
+        if ($required) {
+            json_response(400, ['error' => "Field '$field' is required"]);
+        }
+        return null;
+    }
+
+    $timestamp = strtotime($value);
+    if ($timestamp === false) {
+        json_response(400, ['error' => "Field '$field' must be a valid date"]);
+    }
+
+    return date('Y-m-d H:i:s', $timestamp);
+}
+
+function assert_registration_deadline_bounds(string $deadline, string $startDate, string $endDate): void {
+    $deadlineTs = strtotime($deadline);
+    $startTs = strtotime($startDate);
+    $endTs = strtotime($endDate);
+
+    if ($deadlineTs === false || $startTs === false || $endTs === false) {
+        json_response(400, ['error' => 'Invalid date values supplied.']);
+    }
+
+    if ($deadlineTs > $endTs) {
+        json_response(400, ['error' => 'Registration deadline cannot be after the competition end date.']);
+    }
+
+    if ($deadlineTs > $startTs) {
+        json_response(400, ['error' => 'Registration deadline cannot be after the competition start date.']);
+    }
+}
 
 try {
     switch ($method) {
         case 'GET':
-            // Get all competitions
-            $query = "SELECT * FROM competitions ORDER BY created_at DESC";
-            $result = pg_query($conn, $query);
-            
-            if (!$result) {
-                throw new Exception(pg_last_error($conn));
+            $stmt = $pdo->query('SELECT 
+                    c.id,
+                    c.name,
+                    c.description,
+                    c.start_date,
+                    c.end_date,
+                    c.registration_deadline,
+                    c.max_participants,
+                    (
+                        SELECT COUNT(*)
+                        FROM competition_registrations cr
+                        WHERE cr.competition_id = c.id
+                            AND cr.registration_status IN (\'pending\', \'approved\', \'waitlisted\')
+                    ) AS current_participants,
+                    c.difficulty_level,
+                    c.prize_pool,
+                    c.category,
+                    c.rules,
+                    c.contact_person,
+                    c.banner_url,
+                    c.banner_updated_at,
+                    (CASE WHEN c.banner_data IS NOT NULL THEN 1 ELSE 0 END) AS has_banner,
+                    c.created_at
+                FROM competitions c
+                ORDER BY c.created_at DESC');
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            foreach ($rows as &$competition) {
+                $competition['status'] = compute_competition_status(
+                    $competition['start_date'],
+                    $competition['end_date'],
+                    $competition['registration_deadline']
+                );
+                $competition['bannerUrl'] = ($competition['has_banner'] ?? 0) ? 'api/competition_banner.php?id=' . $competition['id'] : null;
+                if (!$competition['bannerUrl'] && !empty($competition['banner_url'])) {
+                    $competition['bannerUrl'] = $competition['banner_url'];
+                }
+                $versionSource = $competition['banner_updated_at'] ?? $competition['created_at'] ?? null;
+                $competition['bannerVersion'] = $versionSource ? strtotime($versionSource) : null;
+                unset($competition['has_banner'], $competition['banner_updated_at']);
             }
-            
-            $competitions = pg_fetch_all($result);
-            echo json_encode($competitions ?: []);
+            json_response(200, $rows);
             break;
 
         case 'POST':
-            // Create new competition
-            $data = json_decode(file_get_contents('php://input'), true);
-            
-            // Log received data for debugging
-            error_log("Received competition data: " . print_r($data, true));
-            
-            // Validate required fields
-            $required = ['name', 'start_date', 'end_date', 'registration_deadline', 'category'];
-            foreach ($required as $field) {
-                if (empty($data[$field])) {
-                    throw new Exception("Field '$field' is required");
+            $data = read_payload();
+
+            $name = sanitize_string($data['name'] ?? '');
+            $category = sanitize_string($data['category'] ?? '');
+            $description = sanitize_string($data['description'] ?? '');
+            $prizePool = sanitize_string($data['prize_pool'] ?? '');
+            $rules = sanitize_string($data['rules'] ?? '');
+            $contact = sanitize_string($data['contact_person'] ?? '');
+            $bannerUrlLegacy = sanitize_string($data['banner_url'] ?? '');
+
+            if ($name === '') {
+                json_response(400, ['error' => "Field 'name' is required"]);
+            }
+            if ($category === '') {
+                json_response(400, ['error' => "Field 'category' is required"]);
+            }
+
+            $startDate = normalize_datetime($data['start_date'] ?? null, 'start_date', true);
+            $endDate = normalize_datetime($data['end_date'] ?? null, 'end_date', true);
+            $deadline = normalize_datetime($data['registration_deadline'] ?? null, 'registration_deadline', true);
+
+            if ($startDate && $endDate && strtotime($endDate) <= strtotime($startDate)) {
+                json_response(400, ['error' => 'End date must be after start date']);
+            }
+
+            $maxParticipants = $data['max_participants'] ?? null;
+            if ($maxParticipants !== null && $maxParticipants !== '') {
+                if (!ctype_digit((string) $maxParticipants) || (int) $maxParticipants < 1) {
+                    json_response(400, ['error' => 'Max participants must be a positive integer']);
                 }
+                $maxParticipants = (int) $maxParticipants;
+            } else {
+                $maxParticipants = null;
             }
-            
-            // Prepare data with defaults
-            $name = pg_escape_string($conn, $data['name']);
-            $description = isset($data['description']) ? pg_escape_string($conn, $data['description']) : null;
-            $start_date = pg_escape_string($conn, $data['start_date']);
-            $end_date = pg_escape_string($conn, $data['end_date']);
-            $registration_deadline = pg_escape_string($conn, $data['registration_deadline']);
-            $max_participants = isset($data['max_participants']) && $data['max_participants'] !== '' ? intval($data['max_participants']) : 'NULL';
-            $difficulty_level = isset($data['difficulty_level']) ? pg_escape_string($conn, $data['difficulty_level']) : 'beginner';
-            $prize_pool = isset($data['prize_pool']) && $data['prize_pool'] !== '' ? pg_escape_string($conn, $data['prize_pool']) : null;
-            $status = isset($data['status']) ? pg_escape_string($conn, $data['status']) : 'upcoming';
-            $category = pg_escape_string($conn, $data['category']); // Required field, no default
-            $rules = isset($data['rules']) && $data['rules'] !== '' ? pg_escape_string($conn, $data['rules']) : null;
-            $contact_person = isset($data['contact_person']) ? pg_escape_string($conn, $data['contact_person']) : null;
-            $banner_url = isset($data['banner_url']) ? pg_escape_string($conn, $data['banner_url']) : null;
-            
-            $query = "INSERT INTO competitions (
-                name, description, start_date, end_date, registration_deadline,
-                max_participants, difficulty_level, prize_pool, status, category,
-                rules, contact_person, banner_url
-            ) VALUES (
-                '$name', " . ($description ? "'$description'" : "NULL") . ", 
-                '$start_date', '$end_date', '$registration_deadline',
-                $max_participants, '$difficulty_level', " . ($prize_pool ? "'$prize_pool'" : "NULL") . ",
-                '$status', '$category', " . ($rules ? "'$rules'" : "NULL") . ",
-                " . ($contact_person ? "'$contact_person'" : "NULL") . ",
-                " . ($banner_url ? "'$banner_url'" : "NULL") . "
-            ) RETURNING *";
-            
-            // Log the query for debugging
-            error_log("SQL Query: " . $query);
-            
-            $result = pg_query($conn, $query);
-            
-            if (!$result) {
-                $error = pg_last_error($conn);
-                error_log("PostgreSQL Error: " . $error);
-                throw new Exception("Database error: " . $error);
+
+            $difficulty = $data['difficulty_level'] ?? 'beginner';
+            $allowedDifficulties = ['beginner', 'intermediate', 'advanced', 'expert'];
+            if (!in_array($difficulty, $allowedDifficulties, true)) {
+                json_response(400, ['error' => 'Invalid difficulty level']);
             }
-            
-            $competition = pg_fetch_assoc($result);
-            
-            if (!$competition) {
-                throw new Exception("Failed to retrieve created competition");
+
+            assert_registration_deadline_bounds($deadline, $startDate, $endDate);
+
+            $bannerDataBase64 = $data['bannerData'] ?? null;
+            if (!is_string($bannerDataBase64) || $bannerDataBase64 === '') {
+                json_response(400, ['error' => 'Banner image is required.']);
             }
-            
-            http_response_code(201);
-            echo json_encode(['success' => true, 'competition' => $competition, 'message' => 'Competition created successfully']);
+            $bannerMime = sanitize_string($data['bannerMime'] ?? '') ?: null;
+            $bannerBinary = base64_decode($bannerDataBase64, true);
+            if ($bannerBinary === false) {
+                json_response(400, ['error' => 'Invalid banner data']);
+            }
+            if (strlen($bannerBinary) > 5 * 1024 * 1024) {
+                json_response(400, ['error' => 'Banner image must be smaller than 5MB']);
+            }
+            $imageInfo = @getimagesizefromstring($bannerBinary);
+            if ($imageInfo === false) {
+                json_response(400, ['error' => 'Invalid banner image']);
+            }
+            $detectedMime = $imageInfo['mime'] ?? null;
+            if ($detectedMime) {
+                $bannerMime = $detectedMime;
+            }
+            $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+            if ($bannerMime && !in_array($bannerMime, $allowedMimes, true)) {
+                json_response(400, ['error' => 'Unsupported banner image type']);
+            }
+            if (!$bannerMime) {
+                $bannerMime = 'image/jpeg';
+            }
+            try {
+                $processed = resize_image_binary($bannerBinary, $bannerMime, 30);
+            } catch (RuntimeException $e) {
+                json_response(400, ['error' => $e->getMessage()]);
+            }
+            $bannerBinary = $processed['data'];
+            $bannerMime = $processed['mime'];
+            $stmt = $pdo->prepare('INSERT INTO competitions
+                (name, description, start_date, end_date, registration_deadline, max_participants, difficulty_level, prize_pool, category, rules, contact_person, banner_url, banner_data, banner_mime, banner_updated_at, created_at)
+                VALUES (:name, :description, :start_date, :end_date, :registration_deadline, :max_participants, :difficulty_level, :prize_pool, :category, :rules, :contact_person, :banner_url, :banner_data, :banner_mime, :banner_updated_at, NOW())
+                RETURNING id, name, description, start_date, end_date, registration_deadline, max_participants, difficulty_level, prize_pool, category, rules, contact_person, banner_url, banner_updated_at, created_at, (CASE WHEN banner_data IS NOT NULL THEN 1 ELSE 0 END) AS has_banner');
+            $stmt->bindValue(':name', $name);
+            $stmt->bindValue(':description', $description !== '' ? $description : null, PDO::PARAM_STR);
+            $stmt->bindValue(':start_date', $startDate);
+            $stmt->bindValue(':end_date', $endDate);
+            $stmt->bindValue(':registration_deadline', $deadline);
+            $stmt->bindValue(':max_participants', $maxParticipants, $maxParticipants === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+            $stmt->bindValue(':difficulty_level', $difficulty);
+            $stmt->bindValue(':prize_pool', $prizePool !== '' ? $prizePool : null, PDO::PARAM_STR);
+            $stmt->bindValue(':category', $category);
+            $stmt->bindValue(':rules', $rules !== '' ? $rules : null, PDO::PARAM_STR);
+            $stmt->bindValue(':contact_person', $contact !== '' ? $contact : null, PDO::PARAM_STR);
+            $stmt->bindValue(':banner_url', $bannerUrlLegacy !== '' ? $bannerUrlLegacy : null, PDO::PARAM_STR);
+            $stmt->bindValue(':banner_data', $bannerBinary, PDO::PARAM_LOB);
+            $stmt->bindValue(':banner_mime', $bannerMime, PDO::PARAM_STR);
+            $bannerUpdatedAt = date('Y-m-d H:i:s');
+            $stmt->bindValue(':banner_updated_at', $bannerUpdatedAt, PDO::PARAM_STR);
+            $stmt->execute();
+
+            $competition = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($competition) {
+                $competition['status'] = compute_competition_status(
+                    $competition['start_date'],
+                    $competition['end_date'],
+                    $competition['registration_deadline']
+                );
+                $competition['bannerUrl'] = ($competition['has_banner'] ?? 0) ? 'api/competition_banner.php?id=' . $competition['id'] : null;
+                if (!$competition['bannerUrl'] && !empty($competition['banner_url'])) {
+                    $competition['bannerUrl'] = $competition['banner_url'];
+                }
+                $versionSource = $competition['banner_updated_at'] ?? $competition['created_at'] ?? null;
+                $competition['bannerVersion'] = $versionSource ? strtotime($versionSource) : null;
+                unset($competition['has_banner']);
+                unset($competition['banner_updated_at']);
+            }
+
+            record_activity((int) $admin['id'], 'admin.competition.create', 'Created competition', ['competitionId' => $competition['id'] ?? null]);
+
+            json_response(201, [
+                'success' => true,
+                'competition' => $competition,
+                'message' => 'Competition created successfully',
+            ]);
             break;
 
         case 'PUT':
-            // Update competition
-            $data = json_decode(file_get_contents('php://input'), true);
-            
-            if (empty($data['id'])) {
-                throw new Exception("Competition ID is required");
+            $data = read_payload();
+            $id = isset($data['id']) ? (int) $data['id'] : 0;
+            if ($id <= 0) {
+                json_response(400, ['error' => 'Competition ID is required']);
             }
-            
-            $id = intval($data['id']);
-            $updates = [];
-            
-            if (isset($data['name'])) {
-                $updates[] = "name = '" . pg_escape_string($conn, $data['name']) . "'";
+
+            $currentStmt = $pdo->prepare('SELECT start_date, end_date, registration_deadline FROM competitions WHERE id = :id LIMIT 1');
+            $currentStmt->execute([':id' => $id]);
+            $current = $currentStmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$current) {
+                json_response(404, ['error' => 'Competition not found']);
             }
-            if (isset($data['description'])) {
-                $updates[] = "description = '" . pg_escape_string($conn, $data['description']) . "'";
+
+            $fields = [];
+            $params = [':id' => $id];
+
+            if (array_key_exists('name', $data)) {
+                $name = sanitize_string($data['name']);
+                if ($name === '') {
+                    json_response(400, ['error' => "Field 'name' cannot be empty"]);
+                }
+                $fields[] = 'name = :name';
+                $params[':name'] = $name;
             }
-            if (isset($data['status'])) {
-                $updates[] = "status = '" . pg_escape_string($conn, $data['status']) . "'";
+
+            if (array_key_exists('description', $data)) {
+                $description = sanitize_string($data['description']);
+                $fields[] = 'description = :description';
+                $params[':description'] = $description !== '' ? $description : null;
             }
-            if (isset($data['start_date'])) {
-                $updates[] = "start_date = '" . pg_escape_string($conn, $data['start_date']) . "'";
+
+            if (array_key_exists('max_participants', $data)) {
+                $maxParticipants = $data['max_participants'];
+                if ($maxParticipants === null || $maxParticipants === '') {
+                    $params[':max_participants'] = null;
+                } elseif (ctype_digit((string) $maxParticipants) && (int) $maxParticipants > 0) {
+                    $params[':max_participants'] = (int) $maxParticipants;
+                } else {
+                    json_response(400, ['error' => 'Max participants must be a positive integer']);
+                }
+                $fields[] = 'max_participants = :max_participants';
             }
-            if (isset($data['end_date'])) {
-                $updates[] = "end_date = '" . pg_escape_string($conn, $data['end_date']) . "'";
+
+            if (array_key_exists('difficulty_level', $data)) {
+                $difficulty = $data['difficulty_level'];
+                $allowedDifficulties = ['beginner', 'intermediate', 'advanced', 'expert'];
+                if (!in_array($difficulty, $allowedDifficulties, true)) {
+                    json_response(400, ['error' => 'Invalid difficulty level']);
+                }
+                $params[':difficulty_level'] = $difficulty;
+                $fields[] = 'difficulty_level = :difficulty_level';
             }
-            if (isset($data['registration_deadline'])) {
-                $updates[] = "registration_deadline = '" . pg_escape_string($conn, $data['registration_deadline']) . "'";
+
+            if (array_key_exists('prize_pool', $data)) {
+                $prize = sanitize_string($data['prize_pool']);
+                $params[':prize_pool'] = $prize !== '' ? $prize : null;
+                $fields[] = 'prize_pool = :prize_pool';
             }
-            if (isset($data['max_participants'])) {
-                $updates[] = "max_participants = " . intval($data['max_participants']);
+
+            if (array_key_exists('category', $data)) {
+                $category = sanitize_string($data['category']);
+                if ($category === '') {
+                    json_response(400, ['error' => "Field 'category' cannot be empty"]);
+                }
+                $params[':category'] = $category;
+                $fields[] = 'category = :category';
             }
-            if (isset($data['difficulty_level'])) {
-                $updates[] = "difficulty_level = '" . pg_escape_string($conn, $data['difficulty_level']) . "'";
+
+            if (array_key_exists('rules', $data)) {
+                $rules = sanitize_string($data['rules']);
+                $params[':rules'] = $rules !== '' ? $rules : null;
+                $fields[] = 'rules = :rules';
             }
-            if (isset($data['prize_pool'])) {
-                $updates[] = "prize_pool = '" . pg_escape_string($conn, $data['prize_pool']) . "'";
+
+            if (array_key_exists('contact_person', $data)) {
+                $contact = sanitize_string($data['contact_person']);
+                $params[':contact_person'] = $contact !== '' ? $contact : null;
+                $fields[] = 'contact_person = :contact_person';
             }
-            if (isset($data['category'])) {
-                $updates[] = "category = '" . pg_escape_string($conn, $data['category']) . "'";
+
+            if (array_key_exists('banner_url', $data)) {
+                $legacy = sanitize_string($data['banner_url']);
+                $params[':banner_url'] = $legacy !== '' ? $legacy : null;
+                $fields[] = 'banner_url = :banner_url';
             }
-            if (isset($data['rules'])) {
-                $updates[] = "rules = '" . pg_escape_string($conn, $data['rules']) . "'";
+
+            $startDate = array_key_exists('start_date', $data)
+                ? normalize_datetime($data['start_date'], 'start_date', true)
+                : $current['start_date'];
+            $endDate = array_key_exists('end_date', $data)
+                ? normalize_datetime($data['end_date'], 'end_date', true)
+                : $current['end_date'];
+            $registrationDeadline = array_key_exists('registration_deadline', $data)
+                ? normalize_datetime($data['registration_deadline'], 'registration_deadline', true)
+                : $current['registration_deadline'];
+
+            if (!$startDate || !$endDate || !$registrationDeadline) {
+                json_response(400, ['error' => 'Start date, end date, and registration deadline are required.']);
             }
-            if (isset($data['contact_person'])) {
-                $updates[] = "contact_person = '" . pg_escape_string($conn, $data['contact_person']) . "'";
+
+            if (strtotime($endDate) <= strtotime($startDate)) {
+                json_response(400, ['error' => 'End date must be after start date']);
             }
-            if (isset($data['banner_url'])) {
-                $updates[] = "banner_url = '" . pg_escape_string($conn, $data['banner_url']) . "'";
+
+            assert_registration_deadline_bounds($registrationDeadline, $startDate, $endDate);
+
+            $params[':start_date'] = $startDate;
+            $params[':end_date'] = $endDate;
+            $params[':registration_deadline'] = $registrationDeadline;
+            $fields[] = 'start_date = :start_date';
+            $fields[] = 'end_date = :end_date';
+            $fields[] = 'registration_deadline = :registration_deadline';
+
+            $bannerDataBase64 = $data['bannerData'] ?? null;
+            if (is_string($bannerDataBase64) && $bannerDataBase64 !== '') {
+                $bannerBinary = base64_decode($bannerDataBase64, true);
+                if ($bannerBinary === false) {
+                    json_response(400, ['error' => 'Invalid banner data']);
+                }
+                if (strlen($bannerBinary) > 5 * 1024 * 1024) {
+                    json_response(400, ['error' => 'Banner image must be smaller than 5MB']);
+                }
+                $imageInfo = @getimagesizefromstring($bannerBinary);
+                if ($imageInfo === false) {
+                    json_response(400, ['error' => 'Invalid banner image']);
+                }
+                $bannerMime = $imageInfo['mime'] ?? sanitize_string($data['bannerMime'] ?? '') ?: 'application/octet-stream';
+                $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+                if ($bannerMime && !in_array($bannerMime, $allowedMimes, true)) {
+                    json_response(400, ['error' => 'Unsupported banner image type']);
+                }
+                if (!$bannerMime) {
+                    $bannerMime = 'image/jpeg';
+                }
+                try {
+                    $processed = resize_image_binary($bannerBinary, $bannerMime, 30);
+                } catch (RuntimeException $e) {
+                    json_response(400, ['error' => $e->getMessage()]);
+                }
+                $bannerBinary = $processed['data'];
+                $bannerMime = $processed['mime'];
+                $fields[] = 'banner_data = :banner_data';
+                $fields[] = 'banner_mime = :banner_mime';
+                $fields[] = 'banner_updated_at = NOW()';
+                $params[':banner_data'] = $bannerBinary;
+                $params[':banner_mime'] = $bannerMime;
+            } elseif (!isset($data['banner_url']) && empty($data['banner_url'])) {
             }
-            
-            if (empty($updates)) {
-                throw new Exception("No fields to update");
+
+            if (empty($fields)) {
+                json_response(400, ['error' => 'No fields to update']);
             }
-            
-            $query = "UPDATE competitions SET " . implode(', ', $updates) . " WHERE id = $id RETURNING *";
-            $result = pg_query($conn, $query);
-            
-            if (!$result) {
-                throw new Exception(pg_last_error($conn));
+
+            $sql = 'UPDATE competitions SET ' . implode(', ', $fields) . ' WHERE id = :id RETURNING id, name, description, start_date, end_date, registration_deadline, max_participants, difficulty_level, prize_pool, category, rules, contact_person, banner_url, banner_updated_at, created_at, (CASE WHEN banner_data IS NOT NULL THEN 1 ELSE 0 END) AS has_banner';
+            $stmt = $pdo->prepare($sql);
+            foreach ($params as $key => $value) {
+                if ($key === ':banner_data' && isset($params[':banner_data'])) {
+                    $stmt->bindValue($key, $value, PDO::PARAM_LOB);
+                } elseif ($value === null) {
+                    $stmt->bindValue($key, null, PDO::PARAM_NULL);
+                } else {
+                    $stmt->bindValue($key, $value);
+                }
             }
-            
-            $competition = pg_fetch_assoc($result);
-            
+            $stmt->execute();
+            $competition = $stmt->fetch(PDO::FETCH_ASSOC);
+
             if (!$competition) {
-                http_response_code(404);
-                echo json_encode(['error' => 'Competition not found']);
-            } else {
-                echo json_encode(['success' => true, 'competition' => $competition]);
+                json_response(404, ['error' => 'Competition not found']);
             }
+
+            $competition['status'] = compute_competition_status(
+                $competition['start_date'],
+                $competition['end_date'],
+                $competition['registration_deadline']
+            );
+            $competition['bannerUrl'] = ($competition['has_banner'] ?? 0) ? 'api/competition_banner.php?id=' . $competition['id'] : null;
+            if (!$competition['bannerUrl'] && !empty($competition['banner_url'])) {
+                $competition['bannerUrl'] = $competition['banner_url'];
+            }
+            $versionSource = $competition['banner_updated_at'] ?? $competition['created_at'] ?? null;
+            $competition['bannerVersion'] = $versionSource ? strtotime($versionSource) : null;
+            unset($competition['has_banner']);
+            unset($competition['banner_updated_at']);
+
+            record_activity((int) $admin['id'], 'admin.competition.update', 'Updated competition', ['competitionId' => $competition['id'] ?? null]);
+
+            json_response(200, ['success' => true, 'competition' => $competition]);
             break;
 
         case 'DELETE':
-            // Delete competition
-            $data = json_decode(file_get_contents('php://input'), true);
-            
-            if (empty($data['id'])) {
-                throw new Exception("Competition ID is required");
+            $data = read_payload();
+            $id = isset($data['id']) ? (int) $data['id'] : 0;
+            if ($id <= 0) {
+                json_response(400, ['error' => 'Competition ID is required']);
             }
-            
-            $id = intval($data['id']);
-            $query = "DELETE FROM competitions WHERE id = $id RETURNING id";
-            $result = pg_query($conn, $query);
-            
-            if (!$result) {
-                throw new Exception(pg_last_error($conn));
-            }
-            
-            $deleted = pg_fetch_assoc($result);
-            
+
+            $stmt = $pdo->prepare('DELETE FROM competitions WHERE id = :id RETURNING id');
+            $stmt->execute([':id' => $id]);
+            $deleted = $stmt->fetch(PDO::FETCH_ASSOC);
+
             if (!$deleted) {
-                http_response_code(404);
-                echo json_encode(['error' => 'Competition not found']);
-            } else {
-                echo json_encode(['success' => true, 'message' => 'Competition deleted']);
+                json_response(404, ['error' => 'Competition not found']);
             }
+
+            record_activity((int) $admin['id'], 'admin.competition.delete', 'Deleted competition', ['competitionId' => $id]);
+
+            json_response(200, ['success' => true, 'message' => 'Competition deleted']);
             break;
 
         default:
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
+            header('Allow: GET, POST, PUT, DELETE');
+            json_response(405, ['error' => 'Method not allowed']);
     }
-} catch (Exception $e) {
-    error_log("Exception in manage_competitions.php: " . $e->getMessage());
-    error_log("Stack trace: " . $e->getTraceAsString());
-    http_response_code(400);
-    echo json_encode([
-        'error' => $e->getMessage(),
-        'details' => 'Check server error log for more information'
-    ]);
+} catch (Throwable $e) {
+    error_log('manage_competitions error: ' . $e->getMessage());
+    json_response(500, ['error' => 'Server error']);
 }
-
-if ($conn) {
-    pg_close($conn);
-}
-?>
-

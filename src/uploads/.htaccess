@@ -1,6 +1,0 @@
-# Allow access to uploaded files
-Options -Indexes
-<Files "*">
-    Order Allow,Deny
-    Allow from all
-</Files>

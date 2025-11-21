@@ -2,127 +2,106 @@
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../utils.php';
 
-header('Content-Type: application/json');
-session_start();
+$admin = require_authenticated_user(true);
+$pdo = get_pdo();
+ensure_required_tables($pdo);
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-// Check if user is logged in and is admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    http_response_code(403);
-    echo json_encode(['error' => 'Access denied. Admin privileges required.']);
-    exit;
+function payment_payload(): array {
+	$contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+	if (stripos($contentType, 'application/json') !== false) {
+		return require_json_input();
+	}
+
+	if (!empty($_POST)) {
+		return $_POST;
+	}
+
+	return require_json_input();
 }
-
-$method = $_SERVER['REQUEST_METHOD'];
-$conn = getDBConnection();
 
 try {
-    switch ($method) {
-        case 'GET':
-            // Get all pending payments
-            $query = "
-                SELECT 
-                    cr.id,
-                    cr.user_id,
-                    cr.competition_id,
-                    cr.team_name,
-                    cr.registration_status,
-                    cr.payment_status,
-                    cr.registration_notes,
-                    cr.score,
-                    cr.rank,
-                    cr.registered_at,
-                    u.full_name as user_name,
-                    u.email as user_email,
-                    c.name as competition_name
-                FROM competition_registrations cr
-                JOIN users u ON cr.user_id = u.id
-                JOIN competitions c ON cr.competition_id = c.id
-                WHERE cr.payment_status IN ('pending', 'unpaid')
-                ORDER BY cr.registered_at DESC
-            ";
-            
-            $result = pg_query($conn, $query);
-            
-            if (!$result) {
-                throw new Exception(pg_last_error($conn));
-            }
-            
-            $payments = pg_fetch_all($result);
-            echo json_encode($payments ?: []);
-            break;
+	switch ($method) {
+		case 'GET': {
+			$stmt = $pdo->query('SELECT 
+					cr.id,
+					cr.user_id,
+					cr.competition_id,
+					cr.team_name,
+					cr.registration_status,
+					cr.payment_status,
+					cr.registration_notes,
+					cr.score,
+					cr.rank,
+					cr.registered_at,
+					cr.updated_at,
+					u.full_name AS user_name,
+					u.email AS user_email,
+					c.name AS competition_name
+				FROM competition_registrations cr
+				JOIN users u ON cr.user_id = u.id
+				JOIN competitions c ON cr.competition_id = c.id
+				WHERE cr.payment_status IN (\'pending\', \'unpaid\')
+				ORDER BY cr.registered_at DESC');
+			json_response(200, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+		}
+		case 'POST': {
+			$data = payment_payload();
+			$registrationId = isset($data['registration_id']) ? (int) $data['registration_id'] : 0;
+			if ($registrationId <= 0) {
+				json_response(400, ['error' => 'Registration ID is required']);
+			}
 
-        case 'POST':
-            // Update payment status
-            $data = json_decode(file_get_contents('php://input'), true);
-            
-            if (empty($data['registration_id'])) {
-                throw new Exception("Registration ID is required");
-            }
-            
-            if (empty($data['payment_status'])) {
-                throw new Exception("Payment status is required");
-            }
-            
-            $registration_id = intval($data['registration_id']);
-            $payment_status = pg_escape_string($conn, $data['payment_status']);
-            
-            // If payment is approved, also approve registration
-            $registration_status = '';
-            if ($payment_status === 'paid') {
-                $registration_status = ", registration_status = 'approved'";
-            } elseif ($payment_status === 'refunded') {
-                $registration_status = ", registration_status = 'cancelled'";
-            }
-            
-            $query = "
-                UPDATE competition_registrations 
-                SET payment_status = '$payment_status',
-                    updated_at = NOW()
-                    $registration_status
-                WHERE id = $registration_id
-                RETURNING *
-            ";
-            
-            $result = pg_query($conn, $query);
-            
-            if (!$result) {
-                throw new Exception(pg_last_error($conn));
-            }
-            
-            $registration = pg_fetch_assoc($result);
-            
-            if (!$registration) {
-                http_response_code(404);
-                echo json_encode(['error' => 'Registration not found']);
-            } else {
-                // Update current_participants count in competitions table
-                if ($payment_status === 'paid') {
-                    $comp_id = $registration['competition_id'];
-                    pg_query($conn, "
-                        UPDATE competitions 
-                        SET current_participants = (
-                            SELECT COUNT(*) FROM competition_registrations 
-                            WHERE competition_id = $comp_id 
-                            AND payment_status = 'paid'
-                            AND registration_status = 'approved'
-                        )
-                        WHERE id = $comp_id
-                    ");
-                }
-                
-                echo json_encode(['success' => true, 'registration' => $registration]);
-            }
-            break;
+			$paymentStatus = sanitize_string($data['payment_status'] ?? '');
+			$allowed = ['unpaid', 'pending', 'paid', 'refunded'];
+			if ($paymentStatus === '' || !in_array($paymentStatus, $allowed, true)) {
+				json_response(400, ['error' => 'Invalid payment status']);
+			}
 
-        default:
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-    }
-} catch (Exception $e) {
-    http_response_code(400);
-    echo json_encode(['error' => $e->getMessage()]);
+			$registrationStatusUpdate = null;
+			if ($paymentStatus === 'paid') {
+				$registrationStatusUpdate = 'approved';
+			} elseif ($paymentStatus === 'refunded') {
+				$registrationStatusUpdate = 'cancelled';
+			}
+
+			$pdo->beginTransaction();
+
+			$stmt = $pdo->prepare('UPDATE competition_registrations
+				SET payment_status = :payment_status,
+					registration_status = COALESCE(:registration_status, registration_status),
+					updated_at = NOW()
+				WHERE id = :id
+				RETURNING id, user_id, competition_id, team_name, registration_status, payment_status, registration_notes, score, rank, registered_at, updated_at');
+			$stmt->execute([
+				':payment_status' => $paymentStatus,
+				':registration_status' => $registrationStatusUpdate,
+				':id' => $registrationId,
+			]);
+			$registration = $stmt->fetch(PDO::FETCH_ASSOC);
+
+			if (!$registration) {
+				$pdo->rollBack();
+				json_response(404, ['error' => 'Registration not found']);
+			}
+
+			$pdo->commit();
+
+			record_activity((int) $admin['id'], 'admin.payment.update', 'Updated registration payment status', [
+				'registrationId' => $registrationId,
+				'paymentStatus' => $paymentStatus,
+			]);
+
+			json_response(200, ['success' => true, 'registration' => $registration]);
+		}
+		default:
+			header('Allow: GET, POST');
+			json_response(405, ['error' => 'Method not allowed']);
+	}
+} catch (Throwable $e) {
+	if ($pdo->inTransaction()) {
+		$pdo->rollBack();
+	}
+	error_log('verify_payments error: ' . $e->getMessage());
+	json_response(500, ['error' => 'Server error']);
 }
-
-pg_close($conn);
-?>
-

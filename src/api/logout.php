@@ -6,6 +6,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 start_secure_session();
+verify_csrf_token();
 logoutUser();
 
 json_response(200, ['message' => 'Logged out successfully']);

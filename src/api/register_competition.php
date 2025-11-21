@@ -2,109 +2,132 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/utils.php';
 
-header('Content-Type: application/json');
-session_start();
+ensure_http_method('POST');
 
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'You must be logged in to register']);
-    exit;
+$user = require_authenticated_user();
+$input = require_json_input();
+
+$competitionId = isset($input['competition_id']) ? (int) $input['competition_id'] : 0;
+if ($competitionId <= 0) {
+	json_response(400, ['error' => 'Competition ID is required']);
 }
 
-$method = $_SERVER['REQUEST_METHOD'];
-$conn = getDBConnection();
+$teamName = array_key_exists('team_name', $input) ? sanitize_string($input['team_name']) : null;
+$notesRaw = array_key_exists('registration_notes', $input) ? sanitize_string($input['registration_notes']) : null;
+
+if ($teamName === null || $teamName === '') {
+	json_response(400, ['error' => 'Team name is required']);
+}
+
+if ($teamName !== null && $teamName !== '' && strlen($teamName) > 255) {
+	json_response(400, ['error' => 'Team name must be 255 characters or fewer']);
+}
+
+if ($notesRaw !== null && strlen($notesRaw) > 1000) {
+	json_response(400, ['error' => 'Registration notes must be 1000 characters or fewer']);
+}
+
+$pdo = get_pdo();
+ensure_required_tables($pdo);
 
 try {
-    if ($method === 'POST') {
-        $data = json_decode(file_get_contents('php://input'), true);
-        
-        if (empty($data['competition_id'])) {
-            throw new Exception("Competition ID is required");
-        }
-        
-        $user_id = intval($_SESSION['user_id']);
-        $competition_id = intval($data['competition_id']);
-        $team_name = isset($data['team_name']) ? pg_escape_string($conn, $data['team_name']) : null;
-        $registration_notes = isset($data['registration_notes']) ? pg_escape_string($conn, $data['registration_notes']) : null;
-        
-        // Check if competition exists and is open for registration
-        $comp_query = "SELECT * FROM competitions WHERE id = $competition_id";
-        $comp_result = pg_query($conn, $comp_query);
-        $competition = pg_fetch_assoc($comp_result);
-        
-        if (!$competition) {
-            throw new Exception("Competition not found");
-        }
-        
-        if ($competition['status'] !== 'registration_open' && $competition['status'] !== 'upcoming') {
-            throw new Exception("Registration is not open for this competition");
-        }
-        
-        // Check if registration deadline has passed
-        if (strtotime($competition['registration_deadline']) < time()) {
-            throw new Exception("Registration deadline has passed");
-        }
-        
-        // Check if max participants reached
-        if ($competition['max_participants'] && 
-            $competition['current_participants'] >= $competition['max_participants']) {
-            throw new Exception("Competition has reached maximum participants");
-        }
-        
-        // Check if user already registered
-        $check_query = "SELECT id FROM competition_registrations 
-                       WHERE user_id = $user_id AND competition_id = $competition_id";
-        $check_result = pg_query($conn, $check_query);
-        
-        if (pg_num_rows($check_result) > 0) {
-            throw new Exception("You are already registered for this competition");
-        }
-        
-        // Insert registration
-        $query = "
-            INSERT INTO competition_registrations (
-                user_id, 
-                competition_id, 
-                team_name, 
-                registration_notes,
-                registration_status,
-                payment_status
-            ) VALUES (
-                $user_id,
-                $competition_id,
-                " . ($team_name ? "'$team_name'" : "NULL") . ",
-                " . ($registration_notes ? "'$registration_notes'" : "NULL") . ",
-                'pending',
-                'unpaid'
-            ) RETURNING *
-        ";
-        
-        $result = pg_query($conn, $query);
-        
-        if (!$result) {
-            throw new Exception(pg_last_error($conn));
-        }
-        
-        $registration = pg_fetch_assoc($result);
-        
-        http_response_code(201);
-        echo json_encode([
-            'success' => true,
-            'message' => 'Successfully registered for competition',
-            'registration' => $registration
-        ]);
-        
-    } else {
-        http_response_code(405);
-        echo json_encode(['error' => 'Method not allowed']);
-    }
-    
-} catch (Exception $e) {
-    http_response_code(400);
-    echo json_encode(['error' => $e->getMessage()]);
+	$pdo->beginTransaction();
+
+	$competitionStmt = $pdo->prepare('SELECT id, name, start_date, end_date, registration_deadline, max_participants FROM competitions WHERE id = :id FOR UPDATE');
+	$competitionStmt->execute([':id' => $competitionId]);
+	$competition = $competitionStmt->fetch(PDO::FETCH_ASSOC);
+
+	if (!$competition) {
+		$pdo->rollBack();
+		json_response(404, ['error' => 'Competition not found']);
+	}
+
+	$status = compute_competition_status(
+		$competition['start_date'],
+		$competition['end_date'],
+		$competition['registration_deadline']
+	);
+
+	if (!in_array($status, ['upcoming', 'registration_open'], true)) {
+		$pdo->rollBack();
+		json_response(400, ['error' => 'Registration is not open for this competition']);
+	}
+
+	try {
+		$deadlineDate = new DateTimeImmutable($competition['registration_deadline'], get_app_timezone());
+	} catch (Throwable $e) {
+		$pdo->rollBack();
+		json_response(400, ['error' => 'Invalid registration deadline']);
+	}
+
+	if ($deadlineDate < new DateTimeImmutable('now', get_app_timezone())) {
+		$pdo->rollBack();
+		json_response(400, ['error' => 'Registration deadline has passed']);
+	}
+
+	$maxParticipants = $competition['max_participants'] !== null ? (int) $competition['max_participants'] : null;
+	if ($maxParticipants !== null) {
+		$countStmt = $pdo->prepare('SELECT COUNT(*) FROM competition_registrations WHERE competition_id = :competition_id AND registration_status IN (\'pending\', \'approved\', \'waitlisted\')');
+		$countStmt->execute([':competition_id' => $competitionId]);
+		$currentParticipants = (int) $countStmt->fetchColumn();
+		if ($currentParticipants >= $maxParticipants) {
+			$pdo->rollBack();
+			json_response(400, ['error' => 'Competition has reached maximum participants']);
+		}
+	}
+
+	$existingStmt = $pdo->prepare('SELECT id FROM competition_registrations WHERE user_id = :user_id AND competition_id = :competition_id LIMIT 1');
+	$existingStmt->execute([
+		':user_id' => $user['id'],
+		':competition_id' => $competitionId,
+	]);
+	if ($existingStmt->fetch()) {
+		$pdo->rollBack();
+		json_response(409, ['error' => 'You are already registered for this competition']);
+	}
+
+	if ($teamName !== null && $teamName !== '') {
+		$teamCheckStmt = $pdo->prepare('SELECT id FROM competition_registrations WHERE competition_id = :competition_id AND team_name = :team_name LIMIT 1');
+		$teamCheckStmt->execute([
+			':competition_id' => $competitionId,
+			':team_name' => $teamName
+		]);
+		if ($teamCheckStmt->fetch()) {
+			$pdo->rollBack();
+			json_response(409, ['error' => 'Team name already taken for this competition. Please choose another name.']);
+		}
+	}
+
+	$insertStmt = $pdo->prepare('INSERT INTO competition_registrations
+		(user_id, competition_id, team_name, registration_notes, registration_status, payment_status, updated_at)
+		VALUES (:user_id, :competition_id, :team_name, :registration_notes, :registration_status, :payment_status, NOW())
+		RETURNING id, user_id, competition_id, team_name, registration_status, payment_status, registration_notes, score, rank, registered_at, updated_at');
+	$insertStmt->execute([
+		':user_id' => $user['id'],
+		':competition_id' => $competitionId,
+		':team_name' => $teamName === '' ? null : $teamName,
+		':registration_notes' => $notesRaw === '' ? null : $notesRaw,
+		':registration_status' => 'pending',
+		':payment_status' => 'unpaid',
+	]);
+	$registration = $insertStmt->fetch(PDO::FETCH_ASSOC);
+
+	$pdo->commit();
+
+	record_activity((int) $user['id'], 'competition.register', 'Registered for competition', [
+		'competitionId' => $competitionId,
+		'competitionName' => $competition['name'] ?? null,
+	]);
+
+	json_response(201, [
+		'success' => true,
+		'message' => 'Successfully registered for competition',
+		'registration' => $registration,
+	]);
+} catch (Throwable $e) {
+	if ($pdo->inTransaction()) {
+		$pdo->rollBack();
+	}
+	error_log('register_competition failed: ' . $e->getMessage());
+	json_response(500, ['error' => 'Server error']);
 }
-
-pg_close($conn);
-?>
-

@@ -6,6 +6,9 @@ CREATE TABLE IF NOT EXISTS users (
 	password_hash VARCHAR(255) NOT NULL,
 	role VARCHAR(20) NOT NULL DEFAULT 'user',
 	avatar_url VARCHAR(500) DEFAULT NULL,
+	avatar_data BYTEA DEFAULT NULL,
+	avatar_mime VARCHAR(100) DEFAULT NULL,
+	avatar_updated_at TIMESTAMP DEFAULT NULL,
 	bio TEXT DEFAULT NULL,
 	location VARCHAR(100) DEFAULT NULL,
 	updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -23,13 +26,14 @@ CREATE TABLE IF NOT EXISTS competitions (
 	current_participants INTEGER DEFAULT 0,
 	difficulty_level VARCHAR(50) DEFAULT 'beginner',
 	prize_pool VARCHAR(255) DEFAULT NULL,
-	status VARCHAR(20) NOT NULL DEFAULT 'upcoming',
 	category VARCHAR(100) NOT NULL,
 	rules TEXT,
 	contact_person VARCHAR(255),
 	banner_url VARCHAR(500) DEFAULT NULL,
+	banner_data BYTEA DEFAULT NULL,
+	banner_mime VARCHAR(100) DEFAULT NULL,
+	banner_updated_at TIMESTAMP DEFAULT NULL,
 	created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-	CHECK (status IN ('upcoming', 'registration_open', 'registration_closed', 'ongoing', 'completed', 'cancelled')),
 	CHECK (difficulty_level IN ('beginner', 'intermediate', 'advanced', 'expert')),
 	CHECK (end_date > start_date),
 	CHECK (registration_deadline <= start_date)
@@ -53,3 +57,14 @@ CREATE TABLE IF NOT EXISTS competition_registrations (
 	CHECK (registration_status IN ('pending', 'approved', 'rejected', 'cancelled', 'waitlisted')),
 	CHECK (payment_status IN ('unpaid', 'pending', 'paid', 'refunded'))
 );
+
+CREATE TABLE IF NOT EXISTS user_activity (
+	id BIGSERIAL PRIMARY KEY,
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	activity_type VARCHAR(100) NOT NULL,
+	description TEXT NOT NULL,
+	metadata JSONB DEFAULT NULL,
+	created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_activity_user_created ON user_activity (user_id, created_at DESC);
