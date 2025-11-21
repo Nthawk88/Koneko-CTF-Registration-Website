@@ -398,14 +398,13 @@ function formatWibDateTime(dateString) {
 }
 
 function updateDashboardGreeting() {
-	const welcome = document.querySelector('#dashboard .welcome-text p');
-	if (!welcome) return;
+	const speechBubble = document.querySelector('#dashboard .speech-bubble .speech-text');
 
-	if (state.currentUser) {
-		const name = state.currentUser.fullName || state.currentUser.username || 'Player';
-		welcome.textContent = `Welcome back, ${name}! Ready for some challenges?`;
-	} else {
-		welcome.textContent = 'Sign in to see your personalised dashboard.';
+	if (speechBubble) {
+		const bubbleName = state.currentUser?.username || state.currentUser?.fullName || 'hacker';
+		speechBubble.textContent = state.currentUser
+			? `Welcome back, ${bubbleName}!`
+			: 'Welcome back, hacker!';
 	}
 }
 
@@ -471,6 +470,12 @@ function updateProfileSummary() {
 		} else {
 			joined.innerHTML = '<i class="fas fa-calendar"></i> Joined recently';
 		}
+	}
+
+	const profileSpeech = document.querySelector('#profile .profile-mascot .speech-text');
+	if (profileSpeech) {
+		const bubbleName = state.currentUser?.username || state.currentUser?.fullName || 'hacker';
+		profileSpeech.textContent = `Manage your profile, ${bubbleName}!`;
 	}
 }
 
