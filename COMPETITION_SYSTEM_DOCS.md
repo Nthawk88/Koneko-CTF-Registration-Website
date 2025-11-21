@@ -19,7 +19,6 @@ Menyimpan data kompetisi CTF.
 - `end_date` - TIMESTAMP - Tanggal selesai
 - `registration_deadline` - TIMESTAMP - Deadline pendaftaran
 - `max_participants` - INTEGER - Maksimal peserta (optional)
-- `current_participants` - INTEGER - Jumlah peserta saat ini
 - `difficulty_level` - VARCHAR(50) - Tingkat kesulitan (beginner, intermediate, advanced, expert)
 - `prize_pool` - VARCHAR(255) - Hadiah kompetisi
 - `status` - VARCHAR(20) - Status kompetisi
@@ -32,7 +31,6 @@ Menyimpan data kompetisi CTF.
 - `category` - VARCHAR(100) - Kategori (international, national, junior, internal)
 - `rules` - TEXT - Peraturan kompetisi
 - `contact_person` - VARCHAR(255) - Kontak person
-- `banner_url` - VARCHAR(500) - URL banner kompetisi
 - `created_at` - TIMESTAMP - Tanggal dibuat
 
 **Constraints:**
@@ -109,8 +107,7 @@ Content-Type: application/json
   "status": "registration_open",
   "category": "international",
   "rules": "Standard CTF rules apply",
-  "contact_person": "admin@ctf.com",
-  "banner_url": "https://example.com/banner.jpg"
+  "contact_person": "admin@ctf.com"
 }
 
 Response: { "success": true, "competition": {...} }
@@ -169,7 +166,7 @@ Response: { "success": true, "registration": {...} }
 **Note:** 
 - Ketika payment_status = 'paid', registration_status otomatis jadi 'approved'
 - Ketika payment_status = 'refunded', registration_status otomatis jadi 'cancelled'
-- current_participants di table competitions otomatis di-update
+- Jumlah peserta ditampilkan secara dinamis dari tabel `competition_registrations`
 
 ---
 
@@ -380,8 +377,6 @@ Admin verify payment di admin panel
 Update payment_status = 'paid'
 registration_status = 'approved'
     ↓
-current_participants di competitions++
-    ↓
 User bisa ikut competition
 ```
 
@@ -444,9 +439,6 @@ users (1) ←→ (*) competition_registrations (*) ←→ (1) competitions
   - Registration deadline belum lewat
   - Max participants belum tercapai
   - User belum terdaftar sebelumnya
-
-**Issue:** Payment verification tidak update current_participants
-- **Solution:** Pastikan status = 'paid' DAN registration_status = 'approved'
 
 ---
 

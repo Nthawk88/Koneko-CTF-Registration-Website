@@ -19,7 +19,7 @@ if (strlen($password) > 128) {
 
 try {
 	$pdo = get_pdo();
-	$stmt = $pdo->prepare('SELECT id, full_name, email, username, password_hash, avatar_url, avatar_updated_at, CASE WHEN avatar_data IS NOT NULL THEN 1 ELSE 0 END AS has_avatar, bio, location, role, created_at, updated_at
+	$stmt = $pdo->prepare('SELECT id, full_name, email, username, password_hash, avatar_updated_at, CASE WHEN avatar_data IS NOT NULL THEN 1 ELSE 0 END AS has_avatar, bio, location, role, created_at, updated_at
 		FROM users WHERE email = :identifier OR username = :identifier LIMIT 1');
 	$stmt->execute([':identifier' => $identifier]);
 	$user = $stmt->fetch();

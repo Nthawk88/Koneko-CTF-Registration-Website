@@ -602,6 +602,7 @@ function renderCompetitionList() {
 			const participants = currentCount;
 			const maxDisplay = hasCapacityLimit ? `/${maxCount}` : '';
 			const bannerSrc = cacheBustUrl(comp.bannerUrl, comp.bannerVersion);
+			const contactPerson = comp.contact_person ? escapeHtml(comp.contact_person) : '-';
 
 			let actionHtml = '';
 			if (canRegister) {
@@ -633,6 +634,7 @@ function renderCompetitionList() {
 					<p><strong>Start:</strong> ${escapeHtml(formatDate(comp.start_date))}</p>
 					<p><strong>End:</strong> ${escapeHtml(formatDate(comp.end_date))}</p>
 					<p><strong>Participants:</strong> ${participants}${maxDisplay}</p>
+					<p><strong>Contact:</strong> ${contactPerson}</p>
 					${comp.prize_pool ? `<p><strong>Prize:</strong> ${escapeHtml(comp.prize_pool)}</p>` : ''}
 					<div class="competition-actions">
 						${actionHtml}
@@ -685,6 +687,7 @@ function renderMyCompetitions() {
 			const regStatus = String(registration.registration_status || 'pending');
 			const regStatusLabel = regStatus.replace(/_/g, ' ');
 			const bannerSrc = cacheBustUrl(registration.bannerUrl, registration.bannerVersion);
+			const contactPerson = registration.contact_person ? escapeHtml(registration.contact_person) : '-';
 			return `
 				<div class="competition-card small">
 					<div class="competition-header">
@@ -696,6 +699,7 @@ function renderMyCompetitions() {
 					<p><strong>Team:</strong> ${registration.team_name ? escapeHtml(registration.team_name) : '-'}</p>
 					<p><strong>Starts:</strong> ${escapeHtml(formatDate(registration.start_date))}</p>
 					<p><strong>Registered:</strong> ${escapeHtml(formatDate(registration.registered_at))}</p>
+					<p><strong>Contact:</strong> ${contactPerson}</p>
 				</div>
 			`;
 		})
@@ -712,12 +716,14 @@ function renderMyCompetitions() {
 			ongoingContainer.innerHTML = ongoing
 				.map((entry) => {
 					const bannerSrc = cacheBustUrl(entry.bannerUrl, entry.bannerVersion);
+					const contactPerson = entry.contact_person ? escapeHtml(entry.contact_person) : '-';
 					return `
 						<div class="competition-card small">
 							${bannerSrc ? `<div class="competition-banner"><img src="${escapeHtml(bannerSrc)}" alt="Banner"></div>` : ''}
 							<div class="competition-title">${escapeHtml(entry.name || 'Competition')}</div>
 							<p><strong>Ends:</strong> ${escapeHtml(formatDate(entry.end_date))}</p>
 							<p><strong>Your Team:</strong> ${entry.team_name ? escapeHtml(entry.team_name) : '-'}</p>
+							<p><strong>Contact:</strong> ${contactPerson}</p>
 						</div>
 					`;
 				})
@@ -1397,6 +1403,7 @@ function renderAdminCompetitions() {
 			const participants = comp.current_participants || 0;
 			const maxParticipants = comp.max_participants ? `/${comp.max_participants}` : '';
 			const bannerSrc = cacheBustUrl(comp.bannerUrl, comp.bannerVersion);
+			const contactPerson = comp.contact_person ? escapeHtml(comp.contact_person) : '-';
 			return `
 				<div class="competition-card">
 					<div class="competition-header">
@@ -1409,6 +1416,7 @@ function renderAdminCompetitions() {
 					<p><strong>Start:</strong> ${escapeHtml(formatDate(comp.start_date))}</p>
 					<p><strong>End:</strong> ${escapeHtml(formatDate(comp.end_date))}</p>
 					<p><strong>Participants:</strong> ${participants}${maxParticipants}</p>
+					<p><strong>Contact:</strong> ${contactPerson}</p>
 					${comp.prize_pool ? `<p><strong>Prize:</strong> ${escapeHtml(comp.prize_pool)}</p>` : ''}
 					<div class="competition-actions">
 						<button type="button" class="btn btn-sm btn-warning" data-action="edit" data-id="${comp.id}">Edit</button>

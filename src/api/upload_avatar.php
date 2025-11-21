@@ -62,17 +62,8 @@ try {
 	$avatarBinary = $processed['data'];
 	$detectedType = $processed['mime'];
 
-	$previousAvatar = $user['avatar_url'] ?? null;
-	if ($previousAvatar && strncmp($previousAvatar, 'uploads/avatars/', 17) === 0) {
-		$previousPath = realpath(__DIR__ . '/../' . $previousAvatar);
-		$uploadsDir = realpath(__DIR__ . '/../uploads/avatars');
-		if ($previousPath && $uploadsDir && strpos($previousPath, $uploadsDir) === 0 && is_file($previousPath)) {
-			@unlink($previousPath);
-		}
-	}
-
 	$pdo = get_pdo();
-	$stmt = $pdo->prepare('UPDATE users SET avatar_data = :data, avatar_mime = :mime, avatar_url = NULL, avatar_updated_at = NOW(), updated_at = NOW() WHERE id = :id');
+	$stmt = $pdo->prepare('UPDATE users SET avatar_data = :data, avatar_mime = :mime, avatar_updated_at = NOW(), updated_at = NOW() WHERE id = :id');
 	$stmt->bindValue(':data', $avatarBinary, PDO::PARAM_LOB);
 	$stmt->bindValue(':mime', $detectedType);
 	$stmt->bindValue(':id', $user['id'], PDO::PARAM_INT);

@@ -22,7 +22,6 @@ try {
             c.category,
             c.rules,
             c.contact_person,
-            c.banner_url,
             c.banner_updated_at,
             c.created_at,
             (
@@ -57,9 +56,6 @@ try {
         $competition['is_registered'] = (bool) $competition['is_registered'];
         $competition['current_participants'] = (int) $competition['current_participants'];
         $competition['bannerUrl'] = ($competition['has_banner'] ?? 0) ? 'api/competition_banner.php?id=' . $competition['id'] : null;
-        if (!$competition['bannerUrl'] && !empty($competition['banner_url'])) {
-            $competition['bannerUrl'] = $competition['banner_url'];
-        }
         $versionSource = $competition['banner_updated_at'] ?? $competition['created_at'] ?? null;
         $competition['bannerVersion'] = $versionSource ? strtotime($versionSource) : null;
         unset($competition['banner_updated_at']);

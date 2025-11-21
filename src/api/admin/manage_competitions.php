@@ -78,11 +78,10 @@ try {
                     ) AS current_participants,
                     c.difficulty_level,
                     c.prize_pool,
-                    c.category,
-                    c.rules,
-                    c.contact_person,
-                    c.banner_url,
-                    c.banner_updated_at,
+					c.category,
+					c.rules,
+					c.contact_person,
+					c.banner_updated_at,
                     (CASE WHEN c.banner_data IS NOT NULL THEN 1 ELSE 0 END) AS has_banner,
                     c.created_at
                 FROM competitions c
@@ -95,9 +94,6 @@ try {
                     $competition['registration_deadline']
                 );
                 $competition['bannerUrl'] = ($competition['has_banner'] ?? 0) ? 'api/competition_banner.php?id=' . $competition['id'] : null;
-                if (!$competition['bannerUrl'] && !empty($competition['banner_url'])) {
-                    $competition['bannerUrl'] = $competition['banner_url'];
-                }
                 $versionSource = $competition['banner_updated_at'] ?? $competition['created_at'] ?? null;
                 $competition['bannerVersion'] = $versionSource ? strtotime($versionSource) : null;
                 unset($competition['has_banner'], $competition['banner_updated_at']);
@@ -114,7 +110,6 @@ try {
             $prizePool = sanitize_string($data['prize_pool'] ?? '');
             $rules = sanitize_string($data['rules'] ?? '');
             $contact = sanitize_string($data['contact_person'] ?? '');
-            $bannerUrlLegacy = sanitize_string($data['banner_url'] ?? '');
 
             if ($name === '') {
                 json_response(400, ['error' => "Field 'name' is required"]);
@@ -184,9 +179,9 @@ try {
             $bannerBinary = $processed['data'];
             $bannerMime = $processed['mime'];
             $stmt = $pdo->prepare('INSERT INTO competitions
-                (name, description, start_date, end_date, registration_deadline, max_participants, difficulty_level, prize_pool, category, rules, contact_person, banner_url, banner_data, banner_mime, banner_updated_at, created_at)
-                VALUES (:name, :description, :start_date, :end_date, :registration_deadline, :max_participants, :difficulty_level, :prize_pool, :category, :rules, :contact_person, :banner_url, :banner_data, :banner_mime, :banner_updated_at, NOW())
-                RETURNING id, name, description, start_date, end_date, registration_deadline, max_participants, difficulty_level, prize_pool, category, rules, contact_person, banner_url, banner_updated_at, created_at, (CASE WHEN banner_data IS NOT NULL THEN 1 ELSE 0 END) AS has_banner');
+                (name, description, start_date, end_date, registration_deadline, max_participants, difficulty_level, prize_pool, category, rules, contact_person, banner_data, banner_mime, banner_updated_at, created_at)
+                VALUES (:name, :description, :start_date, :end_date, :registration_deadline, :max_participants, :difficulty_level, :prize_pool, :category, :rules, :contact_person, :banner_data, :banner_mime, :banner_updated_at, NOW())
+                RETURNING id, name, description, start_date, end_date, registration_deadline, max_participants, difficulty_level, prize_pool, category, rules, contact_person, banner_updated_at, created_at, (CASE WHEN banner_data IS NOT NULL THEN 1 ELSE 0 END) AS has_banner');
             $stmt->bindValue(':name', $name);
             $stmt->bindValue(':description', $description !== '' ? $description : null, PDO::PARAM_STR);
             $stmt->bindValue(':start_date', $startDate);
@@ -198,7 +193,6 @@ try {
             $stmt->bindValue(':category', $category);
             $stmt->bindValue(':rules', $rules !== '' ? $rules : null, PDO::PARAM_STR);
             $stmt->bindValue(':contact_person', $contact !== '' ? $contact : null, PDO::PARAM_STR);
-            $stmt->bindValue(':banner_url', $bannerUrlLegacy !== '' ? $bannerUrlLegacy : null, PDO::PARAM_STR);
             $stmt->bindValue(':banner_data', $bannerBinary, PDO::PARAM_LOB);
             $stmt->bindValue(':banner_mime', $bannerMime, PDO::PARAM_STR);
             $bannerUpdatedAt = date('Y-m-d H:i:s');
@@ -213,9 +207,6 @@ try {
                     $competition['registration_deadline']
                 );
                 $competition['bannerUrl'] = ($competition['has_banner'] ?? 0) ? 'api/competition_banner.php?id=' . $competition['id'] : null;
-                if (!$competition['bannerUrl'] && !empty($competition['banner_url'])) {
-                    $competition['bannerUrl'] = $competition['banner_url'];
-                }
                 $versionSource = $competition['banner_updated_at'] ?? $competition['created_at'] ?? null;
                 $competition['bannerVersion'] = $versionSource ? strtotime($versionSource) : null;
                 unset($competition['has_banner']);
@@ -313,12 +304,6 @@ try {
                 $fields[] = 'contact_person = :contact_person';
             }
 
-            if (array_key_exists('banner_url', $data)) {
-                $legacy = sanitize_string($data['banner_url']);
-                $params[':banner_url'] = $legacy !== '' ? $legacy : null;
-                $fields[] = 'banner_url = :banner_url';
-            }
-
             $startDate = array_key_exists('start_date', $data)
                 ? normalize_datetime($data['start_date'], 'start_date', true)
                 : $current['start_date'];
@@ -379,14 +364,13 @@ try {
                 $fields[] = 'banner_updated_at = NOW()';
                 $params[':banner_data'] = $bannerBinary;
                 $params[':banner_mime'] = $bannerMime;
-            } elseif (!isset($data['banner_url']) && empty($data['banner_url'])) {
             }
 
             if (empty($fields)) {
                 json_response(400, ['error' => 'No fields to update']);
             }
 
-            $sql = 'UPDATE competitions SET ' . implode(', ', $fields) . ' WHERE id = :id RETURNING id, name, description, start_date, end_date, registration_deadline, max_participants, difficulty_level, prize_pool, category, rules, contact_person, banner_url, banner_updated_at, created_at, (CASE WHEN banner_data IS NOT NULL THEN 1 ELSE 0 END) AS has_banner';
+            $sql = 'UPDATE competitions SET ' . implode(', ', $fields) . ' WHERE id = :id RETURNING id, name, description, start_date, end_date, registration_deadline, max_participants, difficulty_level, prize_pool, category, rules, contact_person, banner_updated_at, created_at, (CASE WHEN banner_data IS NOT NULL THEN 1 ELSE 0 END) AS has_banner';
             $stmt = $pdo->prepare($sql);
             foreach ($params as $key => $value) {
                 if ($key === ':banner_data' && isset($params[':banner_data'])) {
@@ -410,9 +394,6 @@ try {
                 $competition['registration_deadline']
             );
             $competition['bannerUrl'] = ($competition['has_banner'] ?? 0) ? 'api/competition_banner.php?id=' . $competition['id'] : null;
-            if (!$competition['bannerUrl'] && !empty($competition['banner_url'])) {
-                $competition['bannerUrl'] = $competition['banner_url'];
-            }
             $versionSource = $competition['banner_updated_at'] ?? $competition['created_at'] ?? null;
             $competition['bannerVersion'] = $versionSource ? strtotime($versionSource) : null;
             unset($competition['has_banner']);

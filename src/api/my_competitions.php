@@ -26,7 +26,6 @@ try {
             c.category,
             c.rules,
             c.contact_person,
-            c.banner_url,
             c.banner_updated_at,
             c.created_at AS competition_created_at,
             (CASE WHEN c.banner_data IS NOT NULL THEN 1 ELSE 0 END) AS has_banner,
@@ -53,9 +52,6 @@ try {
         );
         $registration['current_participants'] = (int) $registration['current_participants'];
         $registration['bannerUrl'] = ($registration['has_banner'] ?? 0) ? 'api/competition_banner.php?id=' . $registration['competition_id'] : null;
-        if (!$registration['bannerUrl'] && !empty($registration['banner_url'])) {
-            $registration['bannerUrl'] = $registration['banner_url'];
-        }
         $versionSource = $registration['banner_updated_at'] ?? $registration['competition_created_at'] ?? null;
         $registration['bannerVersion'] = $versionSource ? strtotime($versionSource) : null;
         unset($registration['banner_updated_at']);

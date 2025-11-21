@@ -96,7 +96,7 @@ function getCurrentUser(): ?array {
 	}
 
 	$pdo = get_pdo();
-	$stmt = $pdo->prepare('SELECT id, full_name, email, username, avatar_url, avatar_updated_at, CASE WHEN avatar_data IS NOT NULL THEN 1 ELSE 0 END AS has_avatar, bio, location, role, created_at, updated_at FROM users WHERE id = ?');
+	$stmt = $pdo->prepare('SELECT id, full_name, email, username, avatar_updated_at, CASE WHEN avatar_data IS NOT NULL THEN 1 ELSE 0 END AS has_avatar, bio, location, role, created_at, updated_at FROM users WHERE id = ?');
 	$stmt->execute([$userId]);
 	$user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -130,7 +130,7 @@ function require_authenticated_user(bool $requireAdmin = false): array {
 
 function getUserById(int $userId): ?array {
 	$pdo = get_pdo();
-	$stmt = $pdo->prepare('SELECT id, full_name, email, username, avatar_url, avatar_updated_at, CASE WHEN avatar_data IS NOT NULL THEN 1 ELSE 0 END AS has_avatar, bio, location, role, created_at, updated_at FROM users WHERE id = ?');
+	$stmt = $pdo->prepare('SELECT id, full_name, email, username, avatar_updated_at, CASE WHEN avatar_data IS NOT NULL THEN 1 ELSE 0 END AS has_avatar, bio, location, role, created_at, updated_at FROM users WHERE id = ?');
 	$stmt->execute([$userId]);
 	$user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -171,13 +171,6 @@ function format_user_response(array $user): array {
 	$avatarVersion = null;
 	if ($hasAvatar) {
 		$avatarUrl = 'api/user_avatar.php?id=' . (int)($user['id'] ?? 0);
-		$versionSource = $user['avatar_updated_at'] ?? $user['updated_at'] ?? null;
-		if ($versionSource) {
-			$timestamp = is_numeric($versionSource) ? (int) $versionSource : strtotime((string) $versionSource);
-			$avatarVersion = $timestamp !== false ? $timestamp : null;
-		}
-	} elseif (!empty($user['avatar_url'])) {
-		$avatarUrl = $user['avatar_url'];
 		$versionSource = $user['avatar_updated_at'] ?? $user['updated_at'] ?? null;
 		if ($versionSource) {
 			$timestamp = is_numeric($versionSource) ? (int) $versionSource : strtotime((string) $versionSource);
@@ -229,7 +222,6 @@ function ensure_required_tables(PDO $pdo): void {
 			username VARCHAR(50) NOT NULL UNIQUE,
 			password_hash VARCHAR(255) NOT NULL,
 			role VARCHAR(20) NOT NULL DEFAULT 'user',
-			avatar_url VARCHAR(500) DEFAULT NULL,
 			avatar_data BYTEA DEFAULT NULL,
 			avatar_mime VARCHAR(100) DEFAULT NULL,
 			avatar_updated_at TIMESTAMP DEFAULT NULL,
@@ -251,7 +243,6 @@ function ensure_required_tables(PDO $pdo): void {
 			category VARCHAR(100) NOT NULL,
 			rules TEXT,
 			contact_person VARCHAR(255),
-			banner_url VARCHAR(500) DEFAULT NULL,
 			banner_data BYTEA DEFAULT NULL,
 			banner_mime VARCHAR(100) DEFAULT NULL,
 			banner_updated_at TIMESTAMP DEFAULT NULL,
