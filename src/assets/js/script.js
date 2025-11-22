@@ -32,6 +32,7 @@ async function init() {
 	wireSignOut();
 	setupCompetitionInteractions();
 	setupAdminUI();
+	initMatrixRain();
 
 	await refreshSession();
 	applyUserToUI();
@@ -99,6 +100,13 @@ function applyTheme(theme) {
 	if (body) {
 		body.classList.toggle('theme-light', state.theme === 'light');
 		body.classList.toggle('theme-dark', state.theme !== 'light');
+		if (state.theme === 'dark') {
+			body.style.background = '#000000';
+			clearMatrixCanvas();
+		} else {
+			body.style.background = '';
+			clearMatrixCanvas();
+		}
 	}
 	document.documentElement.style.colorScheme = state.theme === 'light' ? 'light' : 'dark';
 	try {
@@ -1818,5 +1826,87 @@ function setupCompetitionFilters() {
 				renderCompetitionList();
 			});
 		});
+	}
+}
+
+let matrixCanvas = null;
+let matrixCtx = null;
+let matrixInterval = null;
+
+function initMatrixRain() {
+	const canvas = document.getElementById('matrix-canvas');
+	if (!canvas) return;
+
+	matrixCanvas = canvas;
+	const ctx = canvas.getContext('2d');
+	if (!ctx) return;
+	matrixCtx = ctx;
+
+	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?~`';
+	const fontSize = 12;
+	let columns = Math.floor(window.innerWidth / fontSize);
+
+	let drops = [];
+	
+	function initializeDrops() {
+		columns = Math.floor(matrixCanvas.width / fontSize);
+		drops = [];
+		for (let i = 0; i < columns; i++) {
+			drops[i] = Math.random() * -100;
+		}
+	}
+	
+	function resizeCanvas() {
+		matrixCanvas.width = window.innerWidth;
+		matrixCanvas.height = window.innerHeight;
+		initializeDrops();
+	}
+	resizeCanvas();
+	window.addEventListener('resize', resizeCanvas);
+
+	function getRainColor() {
+		const isLight = state.theme === 'light';
+		return isLight ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 180, 200, 0.4)';
+	}
+
+	function draw() {
+		const isLight = state.theme === 'light';
+		matrixCtx.fillStyle = isLight ? 'rgba(248, 250, 252, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+		matrixCtx.fillRect(0, 0, matrixCanvas.width, matrixCanvas.height);
+
+		const rainColor = getRainColor();
+		matrixCtx.fillStyle = rainColor;
+		matrixCtx.font = `${fontSize}px monospace`;
+
+		for (let i = 0; i < drops.length; i++) {
+			const text = chars[Math.floor(Math.random() * chars.length)];
+			
+			const y = drops[i] * fontSize;
+			if (y > 0) {
+				matrixCtx.fillText(text, i * fontSize, y);
+			}
+
+			if (y > matrixCanvas.height && Math.random() > 0.975) {
+				drops[i] = 0;
+			}
+
+			drops[i]++;
+		}
+	}
+
+	if (matrixInterval) {
+		clearInterval(matrixInterval);
+	}
+	
+	matrixInterval = setInterval(draw, 50);
+}
+
+function clearMatrixCanvas() {
+	if (matrixCanvas && matrixCtx) {
+		matrixCtx.clearRect(0, 0, matrixCanvas.width, matrixCanvas.height);
+		if (state.theme === 'dark') {
+			matrixCtx.fillStyle = '#000000';
+			matrixCtx.fillRect(0, 0, matrixCanvas.width, matrixCanvas.height);
+		}
 	}
 }
