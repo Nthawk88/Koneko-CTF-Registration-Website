@@ -69,6 +69,15 @@
 
 body.theme-dark {
     color-scheme: dark;
+    --bg-primary: #000000;
+    --bg-secondary: #0a0a0f;
+    --bg-tertiary: #1a1a2e;
+    background: #000000 !important;
+}
+
+body.theme-dark .navbar {
+    background: rgba(0, 0, 0, 0.95) !important;
+    border-bottom: 1px solid var(--border-color);
 }
 
 body.theme-light {
@@ -87,6 +96,7 @@ body.theme-light {
     --shadow-primary: 0 10px 30px rgba(30, 64, 175, 0.12);
     --shadow-secondary: 0 10px 30px rgba(56, 189, 248, 0.12);
     color-scheme: light;
+    background: #f8fafc !important;
 }
 
 body.theme-light .navbar {
@@ -166,7 +176,6 @@ body {
     left: 0;
     right: 0;
     z-index: 1000;
-    background: rgba(10, 10, 15, 0.9);
     backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border-color);
     padding: 1rem 0;
@@ -1834,7 +1843,7 @@ body {
     width: 100vw;
     height: 100vh;
     z-index: -2; 
-    background: rgb(0, 0, 0); 
+    background: transparent; 
     pointer-events: none; 
 }
 
