@@ -2,61 +2,66 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/utils.php';
 
-header('Content-Type: application/json');
-session_start();
-
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'You must be logged in']);
-    exit;
-}
-
-$conn = getDBConnection();
-$user_id = intval($_SESSION['user_id']);
+ensure_http_method('GET');
+$user = require_authenticated_user();
 
 try {
-    // Get all competitions user is registered for
-    $query = "
-        SELECT 
-            cr.id as registration_id,
-            cr.team_name,
+	$pdo = get_pdo();
+	ensure_required_tables($pdo);
+	$stmt = $pdo->prepare('SELECT
+            cr.id,
             cr.registration_status,
-            cr.payment_status,
-            cr.score,
-            cr.rank,
             cr.registered_at,
-            c.id as competition_id,
+            cr.competition_id,
+            cr.payment_status,
+            cr.team_name,
             c.name,
             c.description,
             c.start_date,
             c.end_date,
             c.registration_deadline,
+            c.max_participants,
             c.difficulty_level,
             c.prize_pool,
-            c.status,
             c.category,
-            c.banner_url
+            c.rules,
+            c.contact_person,
+            c.banner_updated_at,
+            c.created_at AS competition_created_at,
+            (CASE WHEN c.banner_data IS NOT NULL THEN 1 ELSE 0 END) AS has_banner,
+            (
+                SELECT COUNT(*)
+                FROM competition_registrations cr2
+                WHERE cr2.competition_id = c.id
+                    AND cr2.registration_status IN (\'pending\', \'approved\', \'waitlisted\')
+            ) AS current_participants
         FROM competition_registrations cr
-        JOIN competitions c ON cr.competition_id = c.id
-        WHERE cr.user_id = $user_id
-        ORDER BY c.start_date DESC
-    ";
-    
-    $result = pg_query($conn, $query);
-    
-    if (!$result) {
-        throw new Exception(pg_last_error($conn));
+        INNER JOIN competitions c ON c.id = cr.competition_id
+        WHERE cr.user_id = :user_id
+        ORDER BY cr.registered_at DESC');
+
+    $stmt->execute([':user_id' => $user['id']]);
+
+    $registrations = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    foreach ($registrations as &$registration) {
+        $registration['competition_status'] = compute_competition_status(
+            $registration['start_date'],
+            $registration['end_date'],
+            $registration['registration_deadline']
+        );
+        $registration['current_participants'] = (int) $registration['current_participants'];
+        $registration['bannerUrl'] = ($registration['has_banner'] ?? 0) ? 'api/competition_banner.php?id=' . $registration['competition_id'] : null;
+        $versionSource = $registration['banner_updated_at'] ?? $registration['competition_created_at'] ?? null;
+        $registration['bannerVersion'] = $versionSource ? strtotime($versionSource) : null;
+        unset($registration['banner_updated_at']);
+        unset($registration['has_banner']);
     }
-    
-    $competitions = pg_fetch_all($result);
-    echo json_encode($competitions ?: []);
-    
-} catch (Exception $e) {
-    http_response_code(400);
-    echo json_encode(['error' => $e->getMessage()]);
+
+    json_response(200, [
+        'registrations' => $registrations,
+    ]);
+} catch (Throwable $e) {
+    error_log('my_competitions error: ' . $e->getMessage());
+    json_response(500, ['error' => 'Server error', 'details' => $e->getMessage()]);
 }
-
-pg_close($conn);
-?>
-

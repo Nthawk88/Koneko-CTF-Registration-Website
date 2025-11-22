@@ -3,26 +3,15 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/utils.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-	json_response(405, ['error' => 'Method Not Allowed']);
-}
+ensure_http_method('POST');
+$user = require_authenticated_user();
+$input = require_json_input();
 
 try {
-	start_secure_session();
-	$user = getCurrentUser();
-
-	if (!$user) {
-		json_response(401, ['error' => 'Unauthorized']);
-	}
-
-	try {
-		$input = get_json_input();
-	} catch (InvalidArgumentException $e) {
-		json_response(400, ['error' => $e->getMessage()]);
-	}
-
+	$pdo = get_pdo();
 	$updates = [];
 	$params = ['id' => $user['id']];
+	$passwordChanged = false;
 
 	$fullNameValue = $input['fullName'] ?? $input['full_name'] ?? null;
 	if ($fullNameValue !== null) {
@@ -64,11 +53,48 @@ try {
 		$params['bio'] = $bio === '' ? null : $bio;
 	}
 
+	$currentPassword = $input['currentPassword'] ?? $input['current_password'] ?? '';
+	$newPassword = $input['newPassword'] ?? $input['new_password'] ?? '';
+	$confirmPassword = $input['confirmPassword'] ?? $input['confirm_password'] ?? '';
+
+	if ($newPassword !== '' || $confirmPassword !== '' || $currentPassword !== '') {
+		$currentPassword = (string) $currentPassword;
+		$newPassword = (string) $newPassword;
+		$confirmPassword = (string) $confirmPassword;
+
+		if ($currentPassword === '' || $newPassword === '' || $confirmPassword === '') {
+			json_response(400, ['error' => 'Current, new, and confirm password are required to change password']);
+		}
+
+		if ($newPassword !== $confirmPassword) {
+			json_response(400, ['error' => 'New password and confirmation do not match']);
+		}
+
+		if (strlen($newPassword) < 12 || strlen($newPassword) > 128) {
+			json_response(400, ['error' => 'New password must be between 12 and 128 characters']);
+		}
+
+		if (!preg_match('/[A-Z]/', $newPassword) || !preg_match('/[a-z]/', $newPassword) || !preg_match('/[0-9]/', $newPassword)) {
+			json_response(400, ['error' => 'New password must include upper, lower, and numeric characters']);
+		}
+
+		$stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = :id');
+		$stmt->execute([':id' => $user['id']]);
+		$stored = $stmt->fetchColumn();
+
+		if (!$stored || !password_verify($currentPassword, $stored)) {
+			json_response(403, ['error' => 'Current password is incorrect']);
+		}
+
+		$updates[] = 'password_hash = :password_hash';
+		$params['password_hash'] = password_hash($newPassword, PASSWORD_DEFAULT);
+		$passwordChanged = true;
+	}
+
 	if (!$updates) {
 		json_response(400, ['error' => 'No valid fields to update']);
 	}
 
-	$pdo = get_pdo();
 	if (isset($params['email'])) {
 		$check = $pdo->prepare('SELECT 1 FROM users WHERE email = :email AND id <> :id');
 		$check->execute([':email' => $params['email'], ':id' => $user['id']]);
@@ -82,10 +108,20 @@ try {
 	$stmt->execute($params);
 
 	$updatedUser = getUserById((int) $user['id']);
+	if ($updatedUser) {
+		record_activity((int) $user['id'], 'profile.update', 'Updated profile information', [
+			'fields' => array_map(static fn ($field) => explode(' =', $field)[0] ?? '', $updates),
+		]);
+		if ($passwordChanged) {
+			record_activity((int) $user['id'], 'profile.password.change', 'Changed account password');
+		}
+	}
+
 	json_response(200, [
 		'message' => 'Profile updated successfully',
 		'user' => format_user_response($updatedUser ?? []),
 	]);
 } catch (Throwable $e) {
+	error_log('update_profile failed: ' . $e->getMessage());
 	json_response(500, ['error' => 'Server error']);
 }

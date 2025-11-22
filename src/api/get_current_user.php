@@ -11,7 +11,12 @@ try {
 		json_response(401, ['error' => 'Not authenticated']);
 	}
 
-	json_response(200, ['user' => format_user_response($user)]);
+	$response = ['user' => format_user_response($user)];
+	if (!empty($_SESSION['csrf_token'])) {
+		$response['csrf_token'] = $_SESSION['csrf_token'];
+	}
+
+	json_response(200, $response);
 } catch (Throwable $e) {
 	json_response(500, ['error' => 'Server error']);
 }

@@ -1,26 +1,25 @@
 <?php
 require_once __DIR__ . '/db.php';
 
-try {
-    $pdo = get_pdo();
-    
-    // Create users table if it doesn't exist
-    $createTable = "
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            full_name VARCHAR(100) NOT NULL,
-            email VARCHAR(255) NOT NULL UNIQUE,
-            username VARCHAR(50) NOT NULL UNIQUE,
-            password_hash VARCHAR(255) NOT NULL,
-            role VARCHAR(20) NOT NULL DEFAULT 'user',
-            created_at TIMESTAMP NOT NULL DEFAULT NOW()
-        )
-    ";
-    
-    $pdo->exec($createTable);
-    echo "Database initialized successfully!\n";
-    
-} catch (Exception $e) {
-    echo "Error initializing database: " . $e->getMessage() . "\n";
+if (php_sapi_name() !== 'cli') {
+	http_response_code(403);
+	die('Access denied');
 }
-?>
+
+try {
+	$pdo = get_pdo();
+	$sqlFile = __DIR__ . '/../sql/init.sql';
+	if (!is_file($sqlFile)) {
+		throw new RuntimeException('SQL definition file not found');
+	}
+
+	$sql = file_get_contents($sqlFile);
+	if ($sql === false) {
+		throw new RuntimeException('Failed to read SQL definition file');
+	}
+
+	$pdo->exec($sql);
+	echo "Database initialized successfully!\n";
+} catch (Throwable $e) {
+	echo "Error initializing database: " . $e->getMessage() . "\n";
+}

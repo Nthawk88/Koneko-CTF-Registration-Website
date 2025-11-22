@@ -16,7 +16,6 @@ function get_pdo(): PDO {
 		$pass = $parsed['pass'] ?? '';
 		$db   = ltrim($parsed['path'] ?? '', '/');
 
-		// Parse query parameters for Neon endpoint
 		$query = [];
 		if (isset($parsed['query'])) {
 			parse_str($parsed['query'], $query);
@@ -24,7 +23,6 @@ function get_pdo(): PDO {
 		
 		$dsn = 'pgsql:host=' . $host . ';port=' . $port . ';dbname=' . $db . ';sslmode=require';
 		
-		// Add endpoint ID for Neon if present
 		if (isset($query['options']) && strpos($query['options'], 'endpoint=') !== false) {
 			$dsn .= ';options=' . $query['options'];
 		}
@@ -36,6 +34,7 @@ function get_pdo(): PDO {
 
 		try {
 			$pdo = new PDO($dsn, $user, $pass, $options);
+			$pdo->exec("SET TIME ZONE 'Asia/Jakarta'");
 			return $pdo;
 		} catch (Exception $e) {
 			throw $e;

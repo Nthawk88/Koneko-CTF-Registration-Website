@@ -2,15 +2,9 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/utils.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-	json_response(405, ['error' => 'Method Not Allowed']);
-}
+ensure_http_method('POST');
 
-try {
-	$input = get_json_input();
-} catch (InvalidArgumentException $e) {
-	json_response(400, ['error' => $e->getMessage()]);
-}
+$input = require_json_input();
 
 $identifier = sanitize_string($input['identifier'] ?? '');
 $password = (string) ($input['password'] ?? '');
@@ -25,7 +19,7 @@ if (strlen($password) > 128) {
 
 try {
 	$pdo = get_pdo();
-	$stmt = $pdo->prepare('SELECT id, full_name, email, username, password_hash, avatar_url, bio, location, role, created_at, updated_at
+	$stmt = $pdo->prepare('SELECT id, full_name, email, username, password_hash, avatar_updated_at, CASE WHEN avatar_data IS NOT NULL THEN 1 ELSE 0 END AS has_avatar, bio, location, role, created_at, updated_at
 		FROM users WHERE email = :identifier OR username = :identifier LIMIT 1');
 	$stmt->execute([':identifier' => $identifier]);
 	$user = $stmt->fetch();
@@ -34,12 +28,17 @@ try {
 		json_response(401, ['error' => 'Invalid credentials']);
 	}
 
-	loginUser((int) $user['id']);
+	loginUser((int) $user['id'], (string) $user['role']);
+	record_activity((int) $user['id'], 'auth.signin', 'User signed in', ['identifier' => $identifier]);
+
+	ensure_csrf_token();
 
 	json_response(200, [
 		'message' => 'Signed in successfully',
 		'user' => format_user_response($user),
+		'csrf_token' => $_SESSION['csrf_token'] ?? null,
 	]);
 } catch (Throwable $e) {
+	error_log('signin failed: ' . $e->getMessage());
 	json_response(500, ['error' => 'Server error']);
 }

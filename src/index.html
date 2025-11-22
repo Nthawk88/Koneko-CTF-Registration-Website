@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data:; connect-src 'self';">
     <title>Koneko CTF - Capture The Flag Competition</title>
     <link rel="stylesheet" href="assets/css/styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-    <!-- Navigation -->
     <nav class="navbar">
         <div class="nav-container">
             <div class="nav-brand">
@@ -28,17 +28,20 @@
                 <a href="#signin" class="nav-link" data-page="signin">Sign In</a>
                 <a href="#signup" class="nav-link" data-page="signup">Sign Up</a>
             </div>
-            <div class="nav-toggle" id="nav-toggle">
-                <span></span>
-                <span></span>
-                <span></span>
+            <div class="nav-actions">
+                <button class="theme-toggle" id="theme-toggle" aria-label="Switch to light mode" aria-pressed="false">
+                    <i class="fas fa-sun"></i>
+                </button>
+                <div class="nav-toggle" id="nav-toggle">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
             </div>
         </div>
     </nav>
 
-    <!-- Main Content -->
     <main id="main-content">
-        <!-- Home Page -->
         <div id="home" class="page active">
             <section class="hero">
                 <div class="container">
@@ -99,14 +102,6 @@
                     </div>
                     
                     <div class="stats-section">
-                        <div class="stat-item">
-                            <div class="stat-number">1000+</div>
-                            <div class="stat-label">Active Players</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">50+</div>
-                            <div class="stat-label">Competitions</div>
-                        </div>
                         <div class="stat-item">
                             <div class="stat-number">24/7</div>
                             <div class="stat-label">Platform Uptime</div>
@@ -202,7 +197,6 @@
             </section>
         </div>
 
-        <!-- Competitions Page -->
         <div id="competitions" class="page">
             <section class="page-header">
                 <div class="container">
@@ -246,7 +240,7 @@
                         <div class="filter-buttons">
                             <button class="filter-btn active" data-filter="all">All Status</button>
                             <button class="filter-btn" data-filter="upcoming">Upcoming</button>
-                            <button class="filter-btn" data-filter="open">Open</button>
+                            <button class="filter-btn" data-filter="ongoing">Ongoing</button>
                             <button class="filter-btn" data-filter="ended">Ended</button>
                         </div>
                     </div>
@@ -256,13 +250,11 @@
             <section class="competitions-grid">
                 <div class="container">
                     <div class="competitions-list" id="competitions-list">
-                        <!-- Competitions will be loaded here by JavaScript -->
                     </div>
                 </div>
             </section>
         </div>
 
-        <!-- Dashboard Page -->
         <div id="dashboard" class="page">
             <section class="dashboard-header">
                 <div class="container">
@@ -289,33 +281,12 @@
                                 </div>
                             </div>
                             <div class="speech-bubble">
-                                <span class="speech-text">Welcome back, hacker!</span>
+                                <span class="speech-text"></span>
                             </div>
                         </div>
                         <div class="welcome-text">
                             <h1>Dashboard</h1>
-                            <p>Welcome back, John! Ready for some challenges?</p>
-                        </div>
-                        <div class="user-profile" id="user-profile-menu">
-                            <div class="profile-avatar">
-                                <i class="fas fa-user"></i>
-                            </div>
-                            <div class="profile-info">
-                                <div class="profile-name">John "Koneko Cat" Hacker</div>
-                                <div class="profile-rank">Rank #42</div>
-                            </div>
-                            <i class="fas fa-chevron-down profile-caret"></i>
-                            <div class="profile-dropdown" id="profile-dropdown">
-                                <a href="#user-profile-menu" class="dropdown-item" data-action="edit-profile">
-                                    <i class="fas fa-user-edit"></i>
-                                    Edit Profile
-                                </a>
-                                <div class="dropdown-separator"></div>
-                                <button class="dropdown-item" id="menu-signout" type="button">
-                                    <i class="fas fa-right-from-bracket"></i>
-                                    Log Out
-                                </button>
-                            </div>
+                            <p>Monitor your progress, explore new challenges, and keep track of your cybersecurity journey—all in one place.</p>
                         </div>
                     </div>
                 </div>
@@ -326,38 +297,11 @@
                     <div class="stats-grid">
                         <div class="stat-card">
                             <div class="stat-icon">
-                                <i class="fas fa-star"></i>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-label">Total Points</div>
-                                <div class="stat-value">2,847</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">
-                                <i class="fas fa-trophy"></i>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-label">Global Rank</div>
-                                <div class="stat-value">#42</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">
                                 <i class="fas fa-flag"></i>
                             </div>
                             <div class="stat-content">
-                                <div class="stat-label">Competitions</div>
-                                <div class="stat-value">8</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">
-                                <i class="fas fa-target"></i>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-label">Win Rate</div>
-                                <div class="stat-value">38%</div>
+                                <div class="stat-label">Joined Competitions</div>
+                                <div class="stat-value">0</div>
                             </div>
                         </div>
                     </div>
@@ -376,40 +320,21 @@
                                 </button>
                             </div>
                             <div class="competitions-dashboard" id="dashboard-competitions">
-                                <!-- Dashboard competitions will be loaded here -->
+                            </div>
+                            <div class="section-subheader">
+                                <h3>Ongoing Competitions</h3>
+                            </div>
+                            <div class="competitions-banner-grid" id="dashboard-ongoing">
                             </div>
                         </div>
                         
                         <div class="sidebar">
-                            <div class="sidebar-section">
-                                <h3>Quick Stats</h3>
-                                <div class="quick-stats">
-                                    <div class="quick-stat">
-                                        <span class="quick-stat-label">Current Streak</span>
-                                        <span class="quick-stat-value">
-                                            <i class="fas fa-fire"></i>
-                                            7 days
-                                        </span>
-                                    </div>
-                                    <div class="quick-stat">
-                                        <span class="quick-stat-label">Challenges Solved</span>
-                                        <span class="quick-stat-value">127</span>
-                                    </div>
-                                    <div class="quick-stat">
-                                        <span class="quick-stat-label">Average Rank</span>
-                                        <span class="quick-stat-value">#15.2</span>
-                                    </div>
-                                    <div class="quick-stat">
-                                        <span class="quick-stat-label">Member Since</span>
-                                        <span class="quick-stat-value">Jan 15, 2024</span>
-                                    </div>
-                                </div>
-                            </div>
                             
                             <div class="sidebar-section">
                                 <h3>Recent Activity</h3>
-                                <div class="activity-feed" id="activity-feed">
-                                    <!-- Activity items will be loaded here -->
+                                <div class="sidebar-scroll" data-scroll="recent-activity">
+                                    <div class="activity-feed" id="activity-feed">
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -418,7 +343,6 @@
             </section>
         </div>
 
-        <!-- Profile Page -->
         <div id="profile" class="page">
             <section class="profile-header">
                 <div class="container">
@@ -445,7 +369,7 @@
                                 </div>
                             </div>
                             <div class="speech-bubble small">
-                                <span class="speech-text">Manage your profile, hacker!</span>
+                                <span class="speech-text"></span>
                             </div>
                         </div>
                         <div class="profile-title">
@@ -462,14 +386,6 @@
                         <button class="tab-btn active" data-tab="info">
                             <i class="fas fa-user"></i>
                             Profile Info
-                        </button>
-                        <button class="tab-btn" data-tab="security">
-                            <i class="fas fa-lock"></i>
-                            Security
-                        </button>
-                        <button class="tab-btn" data-tab="statistics">
-                            <i class="fas fa-chart-bar"></i>
-                            Statistics
                         </button>
                     </div>
 
@@ -536,92 +452,45 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div id="security-tab" class="tab-pane">
-                            <div class="security-section">
-                                <h2>Security Settings</h2>
-                                <p>Change your password and manage security preferences</p>
-                                
-                                <div class="security-form">
-                                    <div class="form-group">
-                                        <label>Current Password</label>
-                                        <div class="password-input">
-                                            <input type="password" placeholder="Enter current password">
-                                            <button class="password-toggle" type="button">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>New Password</label>
-                                        <div class="password-input">
-                                            <input type="password" placeholder="Enter new password">
-                                            <button class="password-toggle" type="button">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Confirm New Password</label>
-                                        <div class="password-input">
-                                            <input type="password" placeholder="Confirm new password">
-                                            <button class="password-toggle" type="button">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    
-                                    <button class="btn btn-primary">
-                                        <i class="fas fa-key"></i>
-                                        Change Password
-                                    </button>
+                            <div class="profile-form-section">
+                                <div class="section-header">
+                                    <h2>Change Password</h2>
                                 </div>
-                            </div>
-                        </div>
-
-                        <div id="statistics-tab" class="tab-pane">
-                            <div class="statistics-section">
-                                <h2>Your Statistics</h2>
-                                <p>Track your CTF performance and achievements</p>
-                                
-                                <div class="stats-cards">
-                                    <div class="stats-card">
-                                        <div class="stats-icon">
-                                            <i class="fas fa-trophy"></i>
+                                <div class="security-form">
+                                    <form id="change-password-form">
+                                        <div class="form-group">
+                                            <label>Current Password</label>
+                                            <div class="password-input">
+                                                <input type="password" name="currentPassword" placeholder="Enter current password" required>
+                                                <button class="password-toggle" type="button">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div class="stats-content">
-                                            <div class="stats-number">12</div>
-                                            <div class="stats-label">Competitions</div>
+                                        <div class="form-group">
+                                            <label>New Password</label>
+                                            <div class="password-input">
+                                                <input type="password" name="newPassword" placeholder="Enter new password" required>
+                                                <button class="password-toggle" type="button">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="stats-card">
-                                        <div class="stats-icon">
-                                            <i class="fas fa-medal"></i>
+                                        <div class="form-group">
+                                            <label>Confirm New Password</label>
+                                            <div class="password-input">
+                                                <input type="password" name="confirmPassword" placeholder="Confirm new password" required>
+                                                <button class="password-toggle" type="button">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div class="stats-content">
-                                            <div class="stats-number">3</div>
-                                            <div class="stats-label">Wins</div>
-                                        </div>
-                                    </div>
-                                    <div class="stats-card">
-                                        <div class="stats-icon">
-                                            <i class="fas fa-star"></i>
-                                        </div>
-                                        <div class="stats-content">
-                                            <div class="stats-number">2,450</div>
-                                            <div class="stats-label">Points</div>
-                                        </div>
-                                    </div>
-                                    <div class="stats-card">
-                                        <div class="stats-icon">
-                                            <i class="fas fa-crown"></i>
-                                        </div>
-                                        <div class="stats-content">
-                                            <div class="stats-number">#42</div>
-                                            <div class="stats-label">Global Rank</div>
-                                        </div>
-                                    </div>
+                                        <button class="btn btn-primary" type="submit">
+                                            <i class="fas fa-key"></i>
+                                            Update Password
+                                        </button>
+                                    </form>
                                 </div>
                             </div>
                         </div>
@@ -630,7 +499,6 @@
             </section>
         </div>
 
-        <!-- Sign In Page -->
         <div id="signin" class="page">
             <section class="auth-section">
                 <div class="container">
@@ -668,12 +536,12 @@
                             <form id="signin-form">
                                 <div class="form-group">
                                     <label>Email or Username</label>
-                                    <input type="text" placeholder="Enter your email or username" required>
+                                    <input type="text" name="identifier" placeholder="Enter your email or username" required>
                                 </div>
                                 <div class="form-group">
                                     <label>Password</label>
                                     <div class="password-input">
-                                        <input type="password" placeholder="Enter your password" required>
+                                        <input type="password" name="password" placeholder="Enter your password" required>
                                         <button class="password-toggle" type="button">
                                             <i class="fas fa-eye"></i>
                                         </button>
@@ -702,7 +570,6 @@
             </section>
         </div>
 
-        <!-- Sign Up Page -->
         <div id="signup" class="page">
             <section class="auth-section">
                 <div class="container">
@@ -740,20 +607,20 @@
                             <form id="signup-form">
                                 <div class="form-group">
                                     <label>Full Name</label>
-                                    <input type="text" placeholder="Enter your full name" required>
+                                    <input type="text" name="fullName" placeholder="Enter your full name" required>
                                 </div>
                                 <div class="form-group">
                                     <label>Email Address</label>
-                                    <input type="email" placeholder="Enter your email address" required>
+                                    <input type="email" name="email" placeholder="Enter your email address" required>
                                 </div>
                                 <div class="form-group">
                                     <label>Username</label>
-                                    <input type="text" placeholder="Choose a username" required>
+                                    <input type="text" name="username" placeholder="Choose a username" required>
                                 </div>
                                 <div class="form-group">
                                     <label>Password</label>
                                     <div class="password-input">
-                                        <input type="password" placeholder="Create a strong password" required>
+                                        <input type="password" name="password" placeholder="Create a strong password" required>
                                         <button class="password-toggle" type="button">
                                             <i class="fas fa-eye"></i>
                                         </button>
@@ -768,7 +635,7 @@
                                 <div class="form-group">
                                     <label>Confirm Password</label>
                                     <div class="password-input">
-                                        <input type="password" placeholder="Confirm your password" required>
+                                        <input type="password" name="confirmPassword" placeholder="Confirm your password" required>
                                         <button class="password-toggle" type="button">
                                             <i class="fas fa-eye"></i>
                                         </button>
@@ -796,7 +663,6 @@
             </section>
         </div>
 
-        <!-- Admin Page -->
         <div id="admin" class="page">
             <section class="admin-section">
                 <div class="container">
@@ -812,11 +678,9 @@
                     </div>
 
                     <div class="admin-content">
-                        <!-- Competitions Tab -->
                         <div id="admin-competitionsTab" class="admin-tab-content active">
                             <div class="admin-card">
                                 <h2>Add New Competition</h2>
-                                <div id="competitionAlert"></div>
                                 <form id="addCompetitionForm" action="api/register_competition.php">
                                     <div class="form-row">
                                         <div class="form-group">
@@ -865,16 +729,6 @@
                                             </select>
                                         </div>
                                         <div class="form-group">
-                                            <label>Status</label>
-                                            <select name="status">
-                                                <option value="upcoming">Upcoming</option>
-                                                <option value="registration_open">Registration Open</option>
-                                                <option value="registration_closed">Registration Closed</option>
-                                                <option value="ongoing">Ongoing</option>
-                                                <option value="completed">Completed</option>
-                                            </select>
-                                        </div>
-                                        <div class="form-group">
                                             <label>Max Participants</label>
                                             <input type="number" name="max_participants" min="1">
                                         </div>
@@ -897,8 +751,9 @@
                                     </div>
 
                                     <div class="form-group">
-                                        <label>Banner URL</label>
-                                        <input type="url" name="banner_url" placeholder="https://...">
+                                        <label>Banner Image *</label>
+                                        <input type="file" name="banner_file" accept="image/*" required>
+                                        <small class="form-text">Upload a JPG, PNG, or WebP banner (required).</small>
                                     </div>
 
                                     <button type="submit" class="btn btn-primary">Add Competition</button>
@@ -911,7 +766,6 @@
                             </div>
                         </div>
 
-                        <!-- Payments Tab -->
                         <div id="admin-paymentsTab" class="admin-tab-content">
                             <div class="admin-card">
                                 <h2>Pending Payment Verifications</h2>
@@ -935,23 +789,7 @@
                             </div>
                         </div>
 
-                        <!-- Registrations Tab -->
                         <div id="admin-registrationsTab" class="admin-tab-content">
-                            <div class="admin-card">
-                                <h2>All Registrations</h2>
-                                <div class="table-container">
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th>ID</th>
-                                                <th>User</th>
-                                                <th>Competition</th>
-                                                <th>Team Name</th>
-                                                <th>Status</th>
-                                                <th>Payment</th>
-                                                <th>Score</th>
-                                                <th>Registered At</th>
-                                            </tr>
                             <div class="admin-card">
                                 <h2>All Registrations</h2>
                                 <div class="table-container">
@@ -975,7 +813,6 @@
                         </div>
                     </div>
 
-                    <!-- Edit Competition Modal -->
                     <div id="editCompetitionModal" class="modal">
                         <div class="modal-content" style="max-width: 600px;">
                             <div class="modal-header">
@@ -992,25 +829,75 @@
                                     <label>Description</label>
                                     <textarea name="description" id="editCompDescription"></textarea>
                                 </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Category *</label>
+                                        <select name="category" id="editCompCategory" required>
+                                            <option value="international">International</option>
+                                            <option value="national">National</option>
+                                            <option value="junior">Junior</option>
+                                            <option value="internal">Internal</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Difficulty Level</label>
+                                        <select name="difficulty_level" id="editCompDifficulty">
+                                            <option value="beginner">Beginner</option>
+                                            <option value="intermediate">Intermediate</option>
+                                            <option value="advanced">Advanced</option>
+                                            <option value="expert">Expert</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Start Date *</label>
+                                        <input type="datetime-local" name="start_date" id="editCompStart" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>End Date *</label>
+                                        <input type="datetime-local" name="end_date" id="editCompEnd" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Registration Deadline *</label>
+                                        <input type="datetime-local" name="registration_deadline" id="editCompDeadline" required>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Max Participants</label>
+                                        <input type="number" name="max_participants" id="editCompMax" min="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Prize Pool</label>
+                                        <input type="text" name="prize_pool" id="editCompPrize" placeholder="e.g. $10,000">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Contact Person</label>
+                                        <input type="text" name="contact_person" id="editCompContact">
+                                    </div>
+                                </div>
                                 <div class="form-group">
-                                    <label>Status</label>
-                                    <select name="status" id="editCompStatus">
-                                        <option value="upcoming">Upcoming</option>
-                                        <option value="registration_open">Registration Open</option>
-                                        <option value="registration_closed">Registration Closed</option>
-                                        <option value="ongoing">Ongoing</option>
-                                        <option value="completed">Completed</option>
-                                    </select>
+                                    <label>Rules</label>
+                                    <textarea name="rules" id="editCompRules"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>Current Banner</label>
+                                    <div id="editBannerPreview" class="current-banner-preview"></div>
+                                    <input type="file" name="banner_file" accept="image/*">
+                                    <small class="form-text">Upload a new JPG or PNG to replace the banner.</small>
                                 </div>
                                 <button type="submit" class="btn btn-primary">Update Competition</button>
                             </form>
                         </div>
+                    </div>
                 </div>
             </section>
         </div>
     </main>
 
-    <!-- Background Effects -->
     <div class="background-effects">
         <div class="floating-icons">
             <div class="floating-icon">🔒</div>
@@ -1024,8 +911,29 @@
         </div>
         <canvas id="matrix-canvas"></canvas>
     </div>
-    
-    <script src="assets/js/script.js?v=1.8"></script>
+
+    <div id="registrationModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Competition Registration</h2>
+                <span class="modal-close" id="closeRegistrationModal">&times;</span>
+            </div>
+            <form id="registrationForm">
+                <input type="hidden" id="regCompetitionId" name="competition_id">
+                <div id="registrationError" class="form-alert error"></div>
+                <div class="form-group">
+                    <label for="regTeamName">Team Name</label>
+                    <input type="text" id="regTeamName" name="team_name" placeholder="Enter your team name" required>
+                </div>
+                <div class="form-group">
+                    <label for="regNotes">Registration Notes</label>
+                    <textarea id="regNotes" name="registration_notes" placeholder="Any special requirements or notes (optional)"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">Register Now</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="assets/js/script.js?v=1.9"></script>
 </body>
 </html>
-
