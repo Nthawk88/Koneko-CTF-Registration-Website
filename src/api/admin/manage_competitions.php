@@ -172,7 +172,7 @@ try {
                 $bannerMime = 'image/jpeg';
             }
             try {
-                $processed = resize_image_binary($bannerBinary, $bannerMime, 30);
+                $processed = resize_image_binary($bannerBinary, $bannerMime, 1200);
             } catch (RuntimeException $e) {
                 json_response(400, ['error' => $e->getMessage()]);
             }

@@ -450,7 +450,7 @@ function updateProfileSummary() {
 	if (location) {
 		if (state.currentUser.location) {
 			location.style.display = 'block';
-			location.innerHTML = `<i class="fas fa-map-marker-alt"></i> ${state.currentUser.location}`;
+			location.innerHTML = `<i class="fas fa-map-marker-alt"></i> ${escapeHtml(state.currentUser.location)}`;
 		} else {
 			location.style.display = 'none';
 		}
@@ -466,7 +466,7 @@ function updateProfileSummary() {
 	if (joined) {
 		const date = state.currentUser.createdAt ? new Date(state.currentUser.createdAt) : null;
 		if (date && !Number.isNaN(date.getTime())) {
-			joined.innerHTML = `<i class="fas fa-calendar"></i> Joined ${date.toLocaleDateString()}`;
+			joined.innerHTML = `<i class="fas fa-calendar"></i> Joined ${escapeHtml(date.toLocaleDateString())}`;
 		} else {
 			joined.innerHTML = '<i class="fas fa-calendar"></i> Joined recently';
 		}

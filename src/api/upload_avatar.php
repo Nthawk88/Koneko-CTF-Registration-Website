@@ -54,7 +54,7 @@ try {
 	}
 
 	try {
-		$processed = resize_image_binary($originalBinary, $detectedType, 30);
+		$processed = resize_image_binary($originalBinary, $detectedType, 400);
 	} catch (RuntimeException $e) {
 		json_response(400, ['error' => $e->getMessage()]);
 	}
