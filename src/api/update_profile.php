@@ -16,8 +16,8 @@ try {
 	$fullNameValue = $input['fullName'] ?? $input['full_name'] ?? null;
 	if ($fullNameValue !== null) {
 		$fullName = sanitize_string($fullNameValue);
-		if ($fullName === '' || strlen($fullName) > 100) {
-			json_response(400, ['error' => 'Full name must be 1-100 characters']);
+		if (!validate_full_name($fullName)) {
+			json_response(400, ['error' => 'Full name must be 1-30 characters and cannot contain special characters']);
 		}
 		$updates[] = 'full_name = :full_name';
 		$params['full_name'] = $fullName;
@@ -36,7 +36,7 @@ try {
 	$locationValue = $input['location'] ?? null;
 	if ($locationValue !== null) {
 		$location = sanitize_string($locationValue);
-		if (strlen($location) > 100) {
+		if (mb_strlen($location, 'UTF-8') > 100) {
 			json_response(400, ['error' => 'Location must be under 100 characters']);
 		}
 		$updates[] = 'location = :location';
@@ -46,7 +46,7 @@ try {
 	$bioValue = $input['bio'] ?? null;
 	if ($bioValue !== null) {
 		$bio = sanitize_string($bioValue);
-		if (strlen($bio) > 500) {
+		if (mb_strlen($bio, 'UTF-8') > 500) {
 			json_response(400, ['error' => 'Bio must be under 500 characters']);
 		}
 		$updates[] = 'bio = :bio';
@@ -70,13 +70,13 @@ try {
 			json_response(400, ['error' => 'New password and confirmation do not match']);
 		}
 
-		if (strlen($newPassword) < 12 || strlen($newPassword) > 128) {
-			json_response(400, ['error' => 'New password must be between 12 and 128 characters']);
-		}
+	if (strlen($newPassword) < 12 || strlen($newPassword) > 128) {
+		json_response(400, ['error' => 'New password must be between 12 and 128 characters']);
+	}
 
-		if (!preg_match('/[A-Z]/', $newPassword) || !preg_match('/[a-z]/', $newPassword) || !preg_match('/[0-9]/', $newPassword)) {
-			json_response(400, ['error' => 'New password must include upper, lower, and numeric characters']);
-		}
+	if (!preg_match('/[A-Z]/', $newPassword) || !preg_match('/[a-z]/', $newPassword) || !preg_match('/[0-9]/', $newPassword) || !preg_match('/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?~`]/', $newPassword)) {
+		json_response(400, ['error' => 'New password must include upper, lower, numeric, and special characters']);
+	}
 
 		$stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = :id');
 		$stmt->execute([':id' => $user['id']]);
@@ -88,6 +88,9 @@ try {
 
 		$updates[] = 'password_hash = :password_hash';
 		$params['password_hash'] = password_hash($newPassword, PASSWORD_DEFAULT);
+
+		// Invalidate other sessions
+		$updates[] = 'token_version = token_version + 1';
 		$passwordChanged = true;
 	}
 
@@ -95,17 +98,64 @@ try {
 		json_response(400, ['error' => 'No valid fields to update']);
 	}
 
-	if (isset($params['email'])) {
-		$check = $pdo->prepare('SELECT 1 FROM users WHERE email = :email AND id <> :id');
-		$check->execute([':email' => $params['email'], ':id' => $user['id']]);
-		if ($check->fetch()) {
-			json_response(409, ['error' => 'Email already in use']);
+	$allowedFields = ['full_name', 'email', 'location', 'bio', 'password_hash', 'token_version'];
+	$sanitizedUpdates = [];
+	foreach ($updates as $update) {
+		$fieldName = explode(' =', $update)[0] ?? '';
+		if (in_array(trim($fieldName), $allowedFields, true)) {
+			$sanitizedUpdates[] = $update;
 		}
 	}
+	
+	if (empty($sanitizedUpdates)) {
+		json_response(400, ['error' => 'No valid fields to update']);
+	}
 
-	$sql = 'UPDATE users SET ' . implode(', ', $updates) . ', updated_at = NOW() WHERE id = :id';
-	$stmt = $pdo->prepare($sql);
-	$stmt->execute($params);
+	// Use transaction for atomic email uniqueness check and password changes
+	$needsTransaction = $passwordChanged || isset($params['email']);
+	if ($needsTransaction) {
+		$pdo->beginTransaction();
+	}
+
+	try {
+		// Atomic email uniqueness check with row locking
+		if (isset($params['email'])) {
+			$check = $pdo->prepare('SELECT 1 FROM users WHERE email = :email AND id <> :id FOR UPDATE');
+			$check->execute([':email' => $params['email'], ':id' => $user['id']]);
+			if ($check->fetch()) {
+				if ($needsTransaction) {
+					$pdo->rollBack();
+				}
+				json_response(409, ['error' => 'Email already in use']);
+			}
+		}
+
+		$sql = 'UPDATE users SET ' . implode(', ', $sanitizedUpdates) . ', updated_at = NOW() WHERE id = :id RETURNING token_version';
+		$stmt = $pdo->prepare($sql);
+		$stmt->execute($params);
+		$newTokenVersion = $stmt->fetchColumn();
+
+		if ($passwordChanged) {
+			// Invalidate all remember me sessions for this user
+			$deleteSessionsStmt = $pdo->prepare('DELETE FROM user_sessions WHERE user_id = :user_id');
+			$deleteSessionsStmt->execute([':user_id' => $user['id']]);
+			
+			// Update current session token version if password changed, so this user isn't logged out
+			if ($newTokenVersion) {
+				$_SESSION['token_version'] = (int)$newTokenVersion;
+			}
+		}
+
+		// Commit the transaction if one was started
+		if ($needsTransaction) {
+			$pdo->commit();
+		}
+	} catch (Throwable $e) {
+		if ($needsTransaction && $pdo->inTransaction()) {
+			$pdo->rollBack();
+		}
+		throw $e;
+	}
 
 	$updatedUser = getUserById((int) $user['id']);
 	if ($updatedUser) {

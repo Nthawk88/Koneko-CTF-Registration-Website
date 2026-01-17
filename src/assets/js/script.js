@@ -22,28 +22,103 @@ const THEME_STORAGE_KEY = 'koneko-theme';
 
 document.addEventListener('DOMContentLoaded', init);
 
+// Event delegation for navigation
+document.addEventListener('click', function (e) {
+	const navigateTarget = e.target.closest('[data-action="navigate"]');
+	if (navigateTarget) {
+		e.preventDefault();
+		const page = navigateTarget.dataset.page;
+		if (page) {
+			showPage(page);
+			window.location.hash = page;
+		}
+	}
+
+	const closeModalTarget = e.target.closest('[data-action="close-modal"]');
+	if (closeModalTarget) {
+		e.preventDefault();
+		const modalName = closeModalTarget.dataset.modal;
+		if (modalName === 'editCompetitionModal') {
+			closeEditCompetitionModal();
+		}
+	}
+});
+
 async function init() {
-	initThemeToggle();
-	setupPasswordToggles();
-	setupCompetitionFilters();
-	setupNavigation();
-	wireAuthForms();
-	wireProfileEditor();
-	wireSignOut();
-	setupCompetitionInteractions();
-	setupAdminUI();
-	initMatrixRain();
+	try {
+		initThemeToggle();
+		setupPasswordToggles();
+		setupPasswordStrength();
+		setupCompetitionFilters();
+		setupNavigation();
+		wireAuthForms();
+		wireProfileEditor();
+		wireSignOut();
+		setupCompetitionInteractions();
+		setupAdminUI();
+		initMatrixRain();
 
-	await refreshSession();
-	applyUserToUI();
+		// Race condition: Session refresh vs Timeout
+		// Ensures loader doesn't stick for more than 1.5s even if network hangs
+		// But waits at least 200ms for smooth animation
+		const minLoadTime = new Promise(resolve => setTimeout(resolve, 800));
+		const sessionTask = refreshSession();
+		const maxWaitTime = new Promise(resolve => setTimeout(resolve, 1500));
 
-	const initialPage = window.location.hash.replace('#', '') || 'home';
-	showPage(initialPage);
+		await Promise.all([
+			minLoadTime,
+			Promise.race([sessionTask, maxWaitTime])
+		]);
 
-	window.addEventListener('hashchange', () => {
-		const page = window.location.hash.replace('#', '') || 'home';
-		showPage(page);
-	});
+		applyUserToUI();
+	} catch (err) {
+		console.error('Initialization error:', err);
+	} finally {
+		hideLoader();
+
+
+		const initialPage = window.location.hash.replace('#', '') || 'home';
+		if (initialPage.startsWith('reset-password')) {
+			const params = new URLSearchParams(initialPage.replace('reset-password', ''));
+			const token = params.get('token');
+			if (token) {
+				showPage('reset-password');
+				const tokenInput = document.getElementById('reset-token');
+				if (tokenInput) tokenInput.value = token;
+			} else {
+				showPage('forgot-password');
+			}
+		} else {
+			showPage(initialPage);
+		}
+
+		window.addEventListener('hashchange', () => {
+			const page = window.location.hash.replace('#', '') || 'home';
+			if (page.startsWith('reset-password')) {
+				const params = new URLSearchParams(page.replace('reset-password', ''));
+				const token = params.get('token');
+				if (token) {
+					showPage('reset-password');
+					const tokenInput = document.getElementById('reset-token');
+					if (tokenInput) tokenInput.value = token;
+				} else {
+					showPage('forgot-password');
+				}
+			} else {
+				showPage(page);
+			}
+		});
+	}
+}
+
+function hideLoader() {
+	const loader = document.getElementById('page-loader');
+	if (loader) {
+		loader.classList.add('hidden');
+		setTimeout(() => {
+			loader.remove();
+		}, 200); // Match CSS transition duration
+	}
 }
 
 function notify(message, type = 'info') {
@@ -51,26 +126,13 @@ function notify(message, type = 'info') {
 	if (!el) {
 		el = document.createElement('div');
 		el.id = 'toast';
-		el.className = 'toast';
-		el.style.position = 'fixed';
-		el.style.top = '20px';
-		el.style.right = '20px';
-		el.style.padding = '12px 16px';
-		el.style.borderRadius = '8px';
-		el.style.fontSize = '0.9rem';
-		el.style.zIndex = '3000';
+		el.className = 'notification';
 		document.body.appendChild(el);
 	}
 
-	const colors = {
-		success: '#16a34a',
-		error: '#dc2626',
-		info: '#2563eb',
-	};
+	// Set notification type using CSS classes
+	el.className = `notification notification-${type}`;
 	el.textContent = message;
-	el.style.backgroundColor = colors[type] || colors.info;
-	el.style.color = '#fff';
-	el.style.boxShadow = '0 10px 30px rgba(0,0,0,0.25)';
 
 	clearTimeout(el.timeoutId);
 	el.timeoutId = setTimeout(() => {
@@ -100,14 +162,11 @@ function applyTheme(theme) {
 	if (body) {
 		body.classList.toggle('theme-light', state.theme === 'light');
 		body.classList.toggle('theme-dark', state.theme !== 'light');
-		if (state.theme === 'dark') {
-			body.style.background = '#000000';
-			clearMatrixCanvas();
-		} else {
-			body.style.background = '';
-			clearMatrixCanvas();
-		}
+		body.classList.toggle('bg-dark', state.theme === 'dark');
+		body.classList.toggle('bg-light', state.theme === 'light');
+		clearMatrixCanvas();
 	}
+	// Use standard CSS colorScheme property with validated values
 	document.documentElement.style.colorScheme = state.theme === 'light' ? 'light' : 'dark';
 	try {
 		localStorage.setItem(THEME_STORAGE_KEY, state.theme);
@@ -195,11 +254,9 @@ async function buildCompetitionPayload(form) {
 
 async function refreshSession() {
 	try {
-		const data = await apiRequest('get_current_user.php');
-		state.currentUser = data.user;
-		if (data.csrf_token) {
-			state.csrfToken = data.csrf_token;
-		}
+		const data = await apiRequest('get_current_user.php', { requireCsrf: false });
+		state.currentUser = data.user ?? null;
+		state.csrfToken = data.csrf_token ?? null;
 	} catch (err) {
 		state.currentUser = null;
 		state.csrfToken = null;
@@ -234,7 +291,8 @@ function updateAuthVisibility() {
 	const authed = Boolean(state.currentUser);
 	const showWhenAuthed = document.querySelectorAll('[data-auth="protected"]');
 	showWhenAuthed.forEach((el) => {
-		el.style.display = authed ? '' : 'none';
+		el.classList.toggle('auth-hide', !authed);
+		el.classList.toggle('auth-show', authed);
 	});
 
 	const signinLink = document.querySelector('.nav-link[data-page="signin"]');
@@ -243,18 +301,21 @@ function updateAuthVisibility() {
 	const profileLink = document.querySelector('.nav-link[data-page="profile"]');
 	const dashboardLink = document.querySelector('.nav-link[data-page="dashboard"]');
 	const adminLink = document.getElementById('admin-link');
+	const homeLink = document.querySelector('.nav-link[data-page="home"]');
 
-	if (signinLink) signinLink.style.display = authed ? 'none' : '';
-	if (signupLink) signupLink.style.display = authed ? 'none' : '';
-	if (logoutLink) logoutLink.style.display = authed ? '' : 'none';
-	if (profileLink) profileLink.style.display = authed ? '' : 'none';
-	if (dashboardLink) dashboardLink.style.display = authed ? '' : 'none';
+	// Use CSS classes instead of inline styles for CSP compliance
+	if (signinLink) signinLink.classList.toggle('auth-hide', authed);
+	if (signupLink) signupLink.classList.toggle('auth-hide', authed);
+	if (logoutLink) logoutLink.classList.toggle('auth-hide', !authed);
+	if (profileLink) profileLink.classList.toggle('auth-hide', !authed);
+	if (dashboardLink) dashboardLink.classList.toggle('auth-hide', !authed);
+	if (homeLink) homeLink.classList.toggle('auth-hide', authed);
 	if (adminLink) {
-		adminLink.style.display = authed && state.currentUser?.role === 'admin' ? '' : 'none';
+		adminLink.classList.toggle('auth-hide', !(authed && state.currentUser?.role === 'admin'));
 	}
 
 	const profileMenu = document.getElementById('user-profile-menu');
-	if (profileMenu) profileMenu.style.display = authed ? '' : 'none';
+	if (profileMenu) profileMenu.classList.toggle('auth-hide', !authed);
 }
 
 async function refreshRecentActivity() {
@@ -290,7 +351,7 @@ function renderRecentActivity() {
 
 	container.innerHTML = state.recentActivity
 		.map((activity) => {
-			const icon = getActivityIcon(activity.activity_type);
+			const icon = escapeHtml(getActivityIcon(activity.activity_type));
 			const description = escapeHtml(activity.description || '');
 			const relativeTime = formatRelativeTime(activity.created_at, activity.created_at_epoch_ms);
 			return `
@@ -457,18 +518,22 @@ function updateProfileSummary() {
 	}
 	if (location) {
 		if (state.currentUser.location) {
-			location.style.display = 'block';
+			location.classList.remove('display-none');
+			location.classList.add('display-block');
 			location.innerHTML = `<i class="fas fa-map-marker-alt"></i> ${escapeHtml(state.currentUser.location)}`;
 		} else {
-			location.style.display = 'none';
+			location.classList.add('display-none');
+			location.classList.remove('display-block');
 		}
 	}
 	if (bioLine && bioText) {
 		if (state.currentUser.bio) {
 			bioText.textContent = state.currentUser.bio;
-			bioLine.style.display = 'block';
+			bioLine.classList.remove('display-none');
+			bioLine.classList.add('display-block');
 		} else {
-			bioLine.style.display = 'none';
+			bioLine.classList.add('display-none');
+			bioLine.classList.remove('display-block');
 		}
 	}
 	if (joined) {
@@ -584,7 +649,7 @@ function renderCompetitionList() {
 			const compStatus = String(comp.status || '').toLowerCase();
 			switch (status) {
 				case 'upcoming':
-					return compStatus === 'registration_open';
+					return ['registration_open', 'upcoming', 'registration_closed'].includes(compStatus);
 				case 'ongoing':
 					return compStatus === 'ongoing';
 				case 'ended':
@@ -785,75 +850,86 @@ async function registerForCompetition(competitionId, buttonEl) {
 	}
 
 	const button = buttonEl || document.querySelector(`button[data-action="register"][data-id="${competitionId}"]`);
+	const modal = document.getElementById('registrationModal');
+	const form = document.getElementById('registrationForm');
+	const compIdInput = document.getElementById('regCompetitionId');
+	const closeBtn = document.getElementById('closeRegistrationModal');
 
-	if (modal && form && compIdInput) {
-		compIdInput.value = competitionId;
-		form.reset();
-		
-		const errorDiv = document.getElementById('registrationError');
-		if (errorDiv) errorDiv.style.display = 'none';
-
-		modal.classList.add('active');
-		
-		const teamNameInput = document.getElementById('regTeamName');
-		if (teamNameInput) setTimeout(() => teamNameInput.focus(), 100);
-
-		const closeModal = () => {
-			modal.classList.remove('active');
-			if (button) button.disabled = false;
-		};
-
-		if (closeBtn) {
-			closeBtn.onclick = closeModal;
-		}
-		
-		modal.onclick = (event) => {
-			if (event.target === modal) {
-				closeModal();
-			}
-		};
-
-		form.onsubmit = async (e) => {
-			e.preventDefault();
-			const teamName = document.getElementById('regTeamName').value.trim();
-			const notes = document.getElementById('regNotes').value.trim();
-			
-			if (errorDiv) errorDiv.style.display = 'none';
-
-			try {
-				if (button) button.disabled = true;
-				const submitBtn = form.querySelector('button[type="submit"]');
-				if (submitBtn) submitBtn.disabled = true;
-
-				const response = await apiRequest('register_competition.php', {
-					method: 'POST',
-					body: { 
-						competition_id: competitionId,
-						team_name: teamName,
-						registration_notes: notes
-					},
-				});
-				
-				closeModal();
-				const successMessage = response.message || 'Successfully registered for competition';
-				notify(successMessage, 'success');
-				showCompetitionAlert(successMessage, 'success');
-				await Promise.allSettled([refreshCompetitions(), refreshMyCompetitions(), refreshRecentActivity()]);
-			} catch (err) {
-				if (errorDiv) {
-					errorDiv.textContent = err.message;
-					errorDiv.style.display = 'block';
-				} else {
-					notify(err.message, 'error');
-					showCompetitionAlert(err.message, 'error');
-				}
-			} finally {
-				if (button) button.disabled = false;
-				const submitBtn = form.querySelector('button[type="submit"]');
-				if (submitBtn) submitBtn.disabled = false;
-			}
-		};
+	if (!modal || !form || !compIdInput) {
+		notify('Form pendaftaran tidak tersedia. Silakan refresh halaman.', 'error');
+		return;
 	}
+
+	compIdInput.value = competitionId;
+	form.reset();
+
+	const errorDiv = document.getElementById('registrationError');
+	if (errorDiv) {
+		errorDiv.classList.add('display-none');
+	}
+
+	modal.classList.add('active');
+
+	const teamNameInput = document.getElementById('regTeamName');
+	if (teamNameInput) setTimeout(() => teamNameInput.focus(), 100);
+
+	const closeModal = () => {
+		modal.classList.remove('active');
+		if (button) button.disabled = false;
+	};
+
+	if (closeBtn) {
+		closeBtn.onclick = closeModal;
+	}
+
+	modal.onclick = (event) => {
+		if (event.target === modal) {
+			closeModal();
+		}
+	};
+
+	form.onsubmit = async (e) => {
+		e.preventDefault();
+		const teamName = document.getElementById('regTeamName').value.trim();
+		const notes = document.getElementById('regNotes').value.trim();
+
+		if (errorDiv) {
+			errorDiv.classList.add('display-none');
+		}
+
+		try {
+			if (button) button.disabled = true;
+			const submitBtn = form.querySelector('button[type="submit"]');
+			if (submitBtn) submitBtn.disabled = true;
+
+			const response = await apiRequest('register_competition.php', {
+				method: 'POST',
+				body: {
+					competition_id: competitionId,
+					team_name: teamName,
+					registration_notes: notes,
+				},
+			});
+
+			closeModal();
+			const successMessage = response.message || 'Successfully registered for competition';
+			notify(successMessage, 'success');
+			showCompetitionAlert(successMessage, 'success');
+			await Promise.allSettled([refreshCompetitions(), refreshMyCompetitions(), refreshRecentActivity()]);
+		} catch (err) {
+			if (errorDiv) {
+				errorDiv.textContent = err.message;
+				errorDiv.classList.remove('display-none');
+			} else {
+				notify(err.message, 'error');
+				showCompetitionAlert(err.message, 'error');
+			}
+		} finally {
+			if (button) button.disabled = false;
+			const submitBtn = form.querySelector('button[type="submit"]');
+			if (submitBtn) submitBtn.disabled = false;
+		}
+	};
 }
 
 function showPage(pageId) {
@@ -882,6 +958,12 @@ function showPage(pageId) {
 		state.currentPage = pageId;
 		setActiveNavLink(pageId);
 		setDocumentTitle(pageId);
+
+		if (pageId === 'signup') {
+			setTimeout(() => {
+				setupPasswordStrength();
+			}, 100);
+		}
 	}
 }
 
@@ -898,8 +980,12 @@ function setDocumentTitle(pageId) {
 		competitions: 'CTF Competitions - Koneko CTF',
 		dashboard: 'Dashboard - Koneko CTF',
 		profile: 'Profile Management - Koneko CTF',
+		help: 'Help Center - Koneko CTF',
 		signin: 'Sign In - Koneko CTF',
 		signup: 'Sign Up - Koneko CTF',
+		'forgot-password': 'Forgot Password - Koneko CTF',
+		'reset-password': 'Reset Password - Koneko CTF',
+		'not-found': 'Page Not Found - Koneko CTF',
 	};
 	document.title = titles[pageId] || 'Koneko CTF';
 }
@@ -911,6 +997,7 @@ function wireAuthForms() {
 			event.preventDefault();
 			const identifier = signinForm.querySelector('input[name="identifier"]')?.value.trim() || '';
 			const password = signinForm.querySelector('input[name="password"]')?.value || '';
+			const rememberMe = signinForm.querySelector('input[name="rememberMe"]')?.checked || false;
 
 			if (!identifier || !password) {
 				notify('Email/username and password are required', 'error');
@@ -920,7 +1007,7 @@ function wireAuthForms() {
 			try {
 				const data = await apiRequest('signin.php', {
 					method: 'POST',
-					body: { identifier, password },
+					body: { identifier, password, rememberMe },
 				});
 				state.currentUser = data.user;
 				if (data.csrf_token) {
@@ -936,10 +1023,80 @@ function wireAuthForms() {
 		});
 	}
 
+	// Terms of Service and Privacy Policy Modal Logic
+	const policyLinks = document.querySelectorAll('.policy-link');
+	const policyModal = document.getElementById('policyModal');
+	const closePolicyModal = document.getElementById('closePolicyModal');
+	const policyModalTitle = document.getElementById('policyModalTitle');
+	const policyModalBody = document.getElementById('policyModalBody');
+
+	const policies = {
+		tos: {
+			title: 'Terms of Service',
+			content: `
+				<h3>1. Acceptance of Terms</h3>
+				<p>By accessing and using Koneko CTF, you accept and agree to be bound by the terms and provision of this agreement.</p>
+				
+				<h3>2. User Conduct</h3>
+				<p>You agree to use the platform only for lawful purposes. You are prohibited from violating any applicable laws, regulations, or third-party rights.</p>
+				
+				<h3>3. Competition Rules</h3>
+				<p>Participants must adhere to the specific rules of each competition. Cheating, sharing flags, or attacking the platform infrastructure is strictly prohibited and will result in immediate disqualification.</p>
+				
+				<h3>4. Intellectual Property</h3>
+				<p>All content provided on this platform is the property of Koneko CTF or its content suppliers and protected by international copyright laws.</p>
+				
+				<h3>5. Termination</h3>
+				<p>We reserve the right to terminate or suspend access to our service immediately, without prior notice or liability, for any reason whatsoever.</p>
+			`
+		},
+		privacy: {
+			title: 'Privacy Policy',
+			content: `
+				<h3>1. Information Collection</h3>
+				<p>We collect information you provide directly to us, such as when you create an account, participate in a competition, or communicate with us. This may include your name, email address, and username.</p>
+				
+				<h3>2. Use of Information</h3>
+				<p>We use the information we collect to operate, maintain, and improve our services, to communicate with you, and to manage competitions.</p>
+				
+				<h3>3. Data Security</h3>
+				<p>We implement reasonable security measures to protect your information. However, no security system is impenetrable and we cannot guarantee the security of our systems 100%.</p>
+				
+				<h3>4. Cookies</h3>
+				<p>We use cookies to maintain your session and improve your experience. You can control cookie settings through your browser.</p>
+				
+				<h3>5. Changes to This Policy</h3>
+				<p>We may update this privacy policy from time to time. We will notify you of any changes by posting the new policy on this page.</p>
+			`
+		}
+	};
+
+	if (policyModal && closePolicyModal) {
+		const close = () => policyModal.classList.remove('active');
+
+		closePolicyModal.addEventListener('click', close);
+		policyModal.addEventListener('click', (e) => {
+			if (e.target === policyModal) close();
+		});
+
+		policyLinks.forEach(link => {
+			link.addEventListener('click', (e) => {
+				e.preventDefault();
+				const type = link.dataset.type;
+				if (policies[type]) {
+					policyModalTitle.textContent = policies[type].title;
+					policyModalBody.innerHTML = policies[type].content;
+					policyModal.classList.add('active');
+				}
+			});
+		});
+	}
+
 	const signupForm = document.getElementById('signup-form');
 	if (signupForm) {
 		signupForm.addEventListener('submit', async (event) => {
 			event.preventDefault();
+
 			const payload = {
 				fullName: signupForm.querySelector('input[name="fullName"]')?.value.trim() || '',
 				email: signupForm.querySelector('input[name="email"]')?.value.trim() || '',
@@ -959,6 +1116,69 @@ function wireAuthForms() {
 					body: payload,
 				});
 				notify('Account created. Please sign in.', 'success');
+				showPage('signin');
+				window.location.hash = 'signin';
+			} catch (err) {
+				notify(err.message, 'error');
+			}
+		});
+	}
+
+	// Forgot Password Form
+	const forgotPasswordForm = document.getElementById('forgot-password-form');
+	if (forgotPasswordForm) {
+		forgotPasswordForm.addEventListener('submit', async (event) => {
+			event.preventDefault();
+			const email = forgotPasswordForm.querySelector('input[name="email"]')?.value.trim() || '';
+
+			if (!email) {
+				notify('Email is required', 'error');
+				return;
+			}
+
+			try {
+				await apiRequest('forgot_password.php', {
+					method: 'POST',
+					body: { email },
+				});
+				notify('If an account exists with this email, a password reset link has been sent. Please check your inbox.', 'success');
+				forgotPasswordForm.reset();
+			} catch (err) {
+				notify(err.message, 'error');
+			}
+		});
+	}
+
+	// Reset Password Form
+	const resetPasswordForm = document.getElementById('reset-password-form');
+	if (resetPasswordForm) {
+		resetPasswordForm.addEventListener('submit', async (event) => {
+			event.preventDefault();
+			const token = resetPasswordForm.querySelector('input[name="token"]')?.value.trim() || '';
+			const newPassword = resetPasswordForm.querySelector('input[name="newPassword"]')?.value || '';
+			const confirmPassword = resetPasswordForm.querySelector('input[name="confirmPassword"]')?.value || '';
+
+			if (!token) {
+				notify('Invalid reset token', 'error');
+				return;
+			}
+
+			if (!newPassword || !confirmPassword) {
+				notify('Please fill in all fields', 'error');
+				return;
+			}
+
+			if (newPassword !== confirmPassword) {
+				notify('Passwords do not match', 'error');
+				return;
+			}
+
+			try {
+				await apiRequest('reset_password.php', {
+					method: 'POST',
+					body: { token, newPassword, confirmPassword },
+				});
+				notify('Password reset successfully. You can now sign in with your new password.', 'success');
 				showPage('signin');
 				window.location.hash = 'signin';
 			} catch (err) {
@@ -986,16 +1206,18 @@ function wireProfileEditor() {
 	if (editBtn && actions) {
 		editBtn.addEventListener('click', () => {
 			formInputs.forEach((input) => (input.disabled = false));
-			actions.style.display = 'flex';
-			editBtn.style.display = 'none';
+			actions.classList.remove('display-none');
+			actions.classList.add('display-flex');
+			editBtn.classList.add('display-none');
 		});
 	}
 
 	if (cancelBtn && editBtn && actions) {
 		cancelBtn.addEventListener('click', () => {
 			formInputs.forEach((input) => (input.disabled = true));
-			actions.style.display = 'none';
-			editBtn.style.display = 'inline-flex';
+			actions.classList.add('display-none');
+			actions.classList.remove('display-flex');
+			editBtn.classList.remove('display-none');
 			populateProfileForm();
 		});
 	}
@@ -1012,7 +1234,7 @@ function wireProfileEditor() {
 		const fileInput = document.createElement('input');
 		fileInput.type = 'file';
 		fileInput.accept = 'image/*';
-		fileInput.style.display = 'none';
+		fileInput.classList.add('display-none');
 		document.body.appendChild(fileInput);
 
 		avatarButton.addEventListener('click', () => fileInput.click());
@@ -1045,7 +1267,7 @@ function setupAdminUI() {
 
 	const tabButtons = adminPage.querySelectorAll('.admin-tab');
 	tabButtons.forEach((btn) => {
-        btn.addEventListener('click', () => {
+		btn.addEventListener('click', () => {
 			const tabKey = btn.dataset.tab;
 			if (!tabKey) return;
 			setActiveAdminTab(tabKey);
@@ -1064,8 +1286,8 @@ function setupAdminUI() {
 						break;
 				}
 			}
-        });
-    });
+		});
+	});
 
 	const addForm = document.getElementById('addCompetitionForm');
 	if (addForm) {
@@ -1575,7 +1797,7 @@ function formatDate(dateString) {
 	if (!dateString) return 'N/A';
 	const date = new Date(dateString);
 	if (Number.isNaN(date.getTime())) return dateString;
-	
+
 	return new Intl.DateTimeFormat('en-US', {
 		timeZone: 'Asia/Jakarta',
 		year: 'numeric',
@@ -1592,17 +1814,17 @@ function formatDateTimeLocal(dateString) {
 	if (!dateString) return '';
 	const date = new Date(dateString);
 	if (Number.isNaN(date.getTime())) return '';
-	
-	const options = { 
+
+	const options = {
 		timeZone: 'Asia/Jakarta',
 		year: 'numeric', month: '2-digit', day: '2-digit',
 		hour: '2-digit', minute: '2-digit', second: '2-digit',
 		hour12: false
 	};
-	
+
 	const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(date);
 	const part = (type) => parts.find(p => p.type === type).value;
-	
+
 	return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
 }
 
@@ -1634,8 +1856,9 @@ async function submitProfileUpdate() {
 		if (actions && editBtn) {
 			const formInputs = document.querySelectorAll('#info-tab input, #info-tab textarea');
 			formInputs.forEach((input) => (input.disabled = true));
-			actions.style.display = 'none';
-			editBtn.style.display = 'inline-flex';
+			actions.classList.add('display-none');
+			actions.classList.remove('display-flex');
+			editBtn.classList.remove('display-none');
 		}
 	} catch (err) {
 		notify(err.message, 'error');
@@ -1717,41 +1940,102 @@ async function performSignOut() {
 	state.admin.registrations = [];
 	state.recentActivity = [];
 	applyUserToUI();
+
+	// Clear signin form
+	const signinForm = document.getElementById('signin-form');
+	if (signinForm) {
+		const identifierInput = signinForm.querySelector('input[name="identifier"]');
+		const passwordInput = signinForm.querySelector('input[name="password"]');
+		if (identifierInput) identifierInput.value = '';
+		if (passwordInput) passwordInput.value = '';
+	}
+
 	notify('Signed out', 'success');
 	showPage('signin');
 	window.location.hash = 'signin';
 }
 
-async function apiRequest(path, options = {}) {
-	const opts = { credentials: 'include', ...options };
-
-	const headers = opts.headers || {};
-	if (opts.body && opts.json !== false) {
-		headers['Content-Type'] = 'application/json';
-		opts.body = JSON.stringify(opts.body);
-	} else if (opts.json === false) {
-		delete opts.json;
-	}
-
+async function ensureCsrfToken() {
 	if (state.csrfToken) {
-		headers['X-CSRF-Token'] = state.csrfToken;
+		return state.csrfToken;
 	}
-	
-	opts.headers = headers;
 
-	const response = await fetch(`api/${path}`, opts);
-	let data = {};
 	try {
-		data = await response.json();
+		const response = await fetch('api/get_current_user.php', {
+			credentials: 'include',
+		});
+		let data = {};
+		try {
+			data = await response.json();
+		} catch (err) {
+			data = {};
+		}
+
+		if (response.ok) {
+			if (Object.prototype.hasOwnProperty.call(data, 'csrf_token')) {
+				state.csrfToken = data.csrf_token || null;
+			}
+			if (Object.prototype.hasOwnProperty.call(data, 'user')) {
+				state.currentUser = data.user ?? null;
+			}
+			return state.csrfToken;
+		}
 	} catch (err) {
+		console.error('Failed to refresh CSRF token', err);
 	}
 
-	if (!response.ok) {
-		const message = data?.error || `Request failed (${response.status})`;
-		throw new Error(message);
-	}
+	return null;
+}
 
-	return data;
+async function apiRequest(path, options = {}) {
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+	const opts = { credentials: 'include', requireCsrf: true, signal: controller.signal, ...options };
+	const method = (opts.method || 'GET').toUpperCase();
+	const safeMethod = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+
+	try {
+		if (opts.requireCsrf && !safeMethod) {
+			const token = await ensureCsrfToken();
+			if (!token) {
+				throw new Error('Unable to verify request. Please refresh and try again.');
+			}
+		}
+
+		const headers = opts.headers || {};
+		if (opts.body && opts.json !== false) {
+			headers['Content-Type'] = 'application/json';
+			opts.body = JSON.stringify(opts.body);
+		} else if (opts.json === false) {
+			delete opts.json;
+		}
+
+		if (opts.requireCsrf && state.csrfToken) {
+			headers['X-CSRF-Token'] = state.csrfToken;
+		}
+
+		opts.headers = headers;
+		delete opts.requireCsrf;
+
+		const response = await fetch(`api/${path}`, opts);
+		clearTimeout(timeoutId);
+
+		let data = {};
+		try {
+			data = await response.json();
+		} catch (err) {
+		}
+
+		if (!response.ok) {
+			const message = data?.error || `Request failed (${response.status})`;
+			throw new Error(message);
+		}
+
+		return data;
+	} catch (err) {
+		clearTimeout(timeoutId);
+		throw err;
+	}
 }
 
 function wireSignOutMenu() {
@@ -1784,6 +2068,106 @@ function showCompetitionToast(message, type = 'info') {
 	notify(message, map[type] || 'info');
 }
 
+function calculatePasswordStrength(password) {
+	let score = 0;
+	if (!password) return { score: 0, label: 'Weak', color: '#dc3545', percentage: 0 };
+
+	// Client-side estimation (mirrors server logic for instant feedback)
+	if (password.length >= 12) score++;
+	if (password.length >= 16) score++;
+	if (/[A-Z]/.test(password)) score++;
+	if (/[a-z]/.test(password)) score++;
+	if (/[0-9]/.test(password)) score++;
+	if (/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?~`]/.test(password)) score++;
+
+	const common = ['password', '123456', '12345678', 'qwerty', 'admin'];
+	if (common.includes(password.toLowerCase())) score = 0;
+
+	let label = 'Weak';
+	let color = '#dc3545';
+	let percentage = 25;
+
+	if (score <= 2) {
+		percentage = 25;
+		label = 'Weak';
+		color = '#dc3545';
+	} else if (score <= 4) {
+		percentage = 50;
+		label = 'Fair';
+		color = '#ffc107';
+	} else if (score <= 5) {
+		percentage = 75;
+		label = 'Good';
+		color = '#17a2b8';
+	} else {
+		percentage = 100;
+		label = 'Strong';
+		color = '#28a745';
+	}
+
+	return { score, label, color, percentage };
+}
+
+function applyPasswordStrengthClasses(strengthBar, strengthText, percentage, label) {
+	if (!strengthBar || !strengthText) return;
+	
+	const strengthClasses = ['strength-weak', 'strength-fair', 'strength-good', 'strength-strong'];
+	const textClasses = ['strength-text-weak', 'strength-text-fair', 'strength-text-good', 'strength-text-strong'];
+	
+	let strengthClass = 'strength-weak';
+	let textClass = 'strength-text-weak';
+	
+	if (percentage >= 100) {
+		strengthClass = 'strength-strong';
+		textClass = 'strength-text-strong';
+	} else if (percentage >= 75) {
+		strengthClass = 'strength-good';
+		textClass = 'strength-text-good';
+	} else if (percentage >= 50) {
+		strengthClass = 'strength-fair';
+		textClass = 'strength-text-fair';
+	}
+	
+	strengthBar.classList.remove(...strengthClasses);
+	strengthBar.classList.add(strengthClass);
+	strengthText.textContent = `Password strength: ${label}`;
+	strengthText.classList.remove(...textClasses);
+	strengthText.classList.add(textClass);
+}
+
+async function updatePasswordStrength(password, form) {
+	if (!form) return;
+
+	const strengthBar = form.querySelector('.strength-fill');
+	const strengthText = form.querySelector('.strength-text');
+
+	if (!strengthBar || !strengthText) return;
+
+	if (!password) {
+		applyPasswordStrengthClasses(strengthBar, strengthText, 0, 'Weak');
+		return;
+	}
+
+	// Server-side validation (Authoritative)
+	try {
+		const response = await fetch('api/check_password_strength.php', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ password })
+		});
+
+		if (response.ok) {
+			const data = await response.json();
+			applyPasswordStrengthClasses(strengthBar, strengthText, data.percentage, data.label);
+		}
+	} catch (e) {
+		// Fallback to client-side if server fails/offline
+		// (Already handled by immediate update in input listener)
+	}
+}
+
 function setupPasswordToggles() {
 	const toggles = document.querySelectorAll('.password-toggle');
 	if (!toggles.length) return;
@@ -1799,6 +2183,53 @@ function setupPasswordToggles() {
 		});
 	});
 }
+
+function setupPasswordStrength() {
+	// Select password inputs from both signup and reset password forms
+	const passwordInputs = document.querySelectorAll('#signup-form input[name="password"], #reset-password-form input[name="newPassword"]');
+
+	if (!passwordInputs.length) {
+		setTimeout(setupPasswordStrength, 100);
+		return;
+	}
+
+	passwordInputs.forEach(passwordInput => {
+		let isSetup = passwordInput.dataset.strengthSetup === 'true';
+		if (isSetup) return;
+
+		let debounceTimer;
+		passwordInput.addEventListener('input', (e) => {
+			const val = e.target.value;
+			const form = passwordInput.closest('form');
+
+			// 1. Immediate Client-Side Feedback (For "Instant" feel)
+			const est = calculatePasswordStrength(val);
+
+			if (form) {
+				const strengthBar = form.querySelector('.strength-fill');
+				const strengthText = form.querySelector('.strength-text');
+				if (strengthBar && strengthText) {
+					applyPasswordStrengthClasses(strengthBar, strengthText, est.percentage, est.label);
+				}
+			}
+
+			// 2. Debounced Server-Side Validation (For Accuracy/Security)
+			// Only needed if we want server-side check, but client-side is usually enough for UI feedback
+			// Keeping it for consistency if the backend API supports it
+			clearTimeout(debounceTimer);
+			debounceTimer = setTimeout(() => {
+				updatePasswordStrength(val, form);
+			}, 300);
+		});
+
+		passwordInput.dataset.strengthSetup = 'true';
+		// Initial check
+		if (passwordInput.value) {
+			passwordInput.dispatchEvent(new Event('input'));
+		}
+	});
+}
+
 
 function setupCompetitionFilters() {
 	const searchInput = document.getElementById('search-input');
@@ -1847,7 +2278,7 @@ function initMatrixRain() {
 	let columns = Math.floor(window.innerWidth / fontSize);
 
 	let drops = [];
-	
+
 	function initializeDrops() {
 		columns = Math.floor(matrixCanvas.width / fontSize);
 		drops = [];
@@ -1855,7 +2286,7 @@ function initMatrixRain() {
 			drops[i] = Math.random() * -100;
 		}
 	}
-	
+
 	function resizeCanvas() {
 		matrixCanvas.width = window.innerWidth;
 		matrixCanvas.height = window.innerHeight;
@@ -1880,7 +2311,7 @@ function initMatrixRain() {
 
 		for (let i = 0; i < drops.length; i++) {
 			const text = chars[Math.floor(Math.random() * chars.length)];
-			
+
 			const y = drops[i] * fontSize;
 			if (y > 0) {
 				matrixCtx.fillText(text, i * fontSize, y);
@@ -1897,7 +2328,7 @@ function initMatrixRain() {
 	if (matrixInterval) {
 		clearInterval(matrixInterval);
 	}
-	
+
 	matrixInterval = setInterval(draw, 50);
 }
 

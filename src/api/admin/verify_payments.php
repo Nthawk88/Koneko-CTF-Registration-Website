@@ -2,6 +2,11 @@
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../utils.php';
 
+$rateLimitKey = 'admin_' . md5($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+if (!check_rate_limit($rateLimitKey, 30, 60)) {
+	json_response(429, ['error' => 'Too many requests. Please try again later.']);
+}
+
 $admin = require_authenticated_user(true);
 $pdo = get_pdo();
 ensure_required_tables($pdo);
@@ -44,6 +49,7 @@ try {
 				WHERE cr.payment_status IN (\'pending\', \'unpaid\')
 				ORDER BY cr.registered_at DESC');
 			json_response(200, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+			break; // Correctly added break
 		}
 		case 'POST': {
 			$data = payment_payload();
@@ -93,6 +99,7 @@ try {
 			]);
 
 			json_response(200, ['success' => true, 'registration' => $registration]);
+			break;
 		}
 		default:
 			header('Allow: GET, POST');

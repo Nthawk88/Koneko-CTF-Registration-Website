@@ -5,6 +5,12 @@ require_once __DIR__ . '/utils.php';
 ensure_http_method('POST');
 
 $user = require_authenticated_user();
+
+$rateLimitKey = 'register_comp_' . $user['id'];
+if (!check_rate_limit($rateLimitKey, 5, 60)) {
+	json_response(429, ['error' => 'Too many registration attempts. Please try again later.']);
+}
+
 $input = require_json_input();
 
 $competitionId = isset($input['competition_id']) ? (int) $input['competition_id'] : 0;
@@ -67,7 +73,7 @@ try {
 
 	$maxParticipants = $competition['max_participants'] !== null ? (int) $competition['max_participants'] : null;
 	if ($maxParticipants !== null) {
-		$countStmt = $pdo->prepare('SELECT COUNT(*) FROM competition_registrations WHERE competition_id = :competition_id AND registration_status IN (\'pending\', \'approved\', \'waitlisted\')');
+		$countStmt = $pdo->prepare('SELECT COUNT(*) FROM competition_registrations WHERE competition_id = :competition_id AND registration_status IN (\'pending\', \'approved\', \'waitlisted\') FOR UPDATE');
 		$countStmt->execute([':competition_id' => $competitionId]);
 		$currentParticipants = (int) $countStmt->fetchColumn();
 		if ($currentParticipants >= $maxParticipants) {
@@ -76,7 +82,7 @@ try {
 		}
 	}
 
-	$existingStmt = $pdo->prepare('SELECT id FROM competition_registrations WHERE user_id = :user_id AND competition_id = :competition_id LIMIT 1');
+	$existingStmt = $pdo->prepare('SELECT id FROM competition_registrations WHERE user_id = :user_id AND competition_id = :competition_id FOR UPDATE');
 	$existingStmt->execute([
 		':user_id' => $user['id'],
 		':competition_id' => $competitionId,
@@ -87,7 +93,7 @@ try {
 	}
 
 	if ($teamName !== null && $teamName !== '') {
-		$teamCheckStmt = $pdo->prepare('SELECT id FROM competition_registrations WHERE competition_id = :competition_id AND team_name = :team_name LIMIT 1');
+		$teamCheckStmt = $pdo->prepare('SELECT id FROM competition_registrations WHERE competition_id = :competition_id AND team_name = :team_name FOR UPDATE');
 		$teamCheckStmt->execute([
 			':competition_id' => $competitionId,
 			':team_name' => $teamName
